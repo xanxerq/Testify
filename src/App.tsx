@@ -55,7 +55,7 @@ export default function App() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       console.error('Error in handleGenerateExam:', err);
-      alert(err.message || 'Error al generar el examen con IA. Inténtalo de nuevo.');
+      throw err;
     } finally {
       setIsGenerating(false);
     }

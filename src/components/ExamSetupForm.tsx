@@ -188,7 +188,12 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
       additionalNotes: additionalNotes.trim(),
     };
 
-    await onGenerate(config, materials);
+    try {
+      await onGenerate(config, materials);
+    } catch (err: any) {
+      setValidationError(err.message || 'Error al generar el examen con IA. Inténtalo de nuevo.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   return (
