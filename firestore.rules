@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Admin authorization: designated admin email maruyalexander1@gmail.com or admin document
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'maruyalexander1@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.email is string && data.email.size() <= 150 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.role in ['admin', 'user'] &&
+             data.provider in ['google', 'email'] &&
+             data.emailVerified is bool &&
+             // Prevent non-admin users from escalating themselves to admin unless authorized email
+             (data.role == 'user' || data.email == 'maruyalexander1@gmail.com' || isAdmin());
+    }
+
+    function isValidExamResult(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.examId is string && data.examId.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.examTitle is string && data.examTitle.size() <= 200 &&
+             data.subject is string && data.subject.size() <= 100 &&
+             data.topic is string && data.topic.size() <= 150 &&
+             data.level is string && data.level.size() <= 50 &&
+             data.totalScore is number &&
+             data.maxPossibleScore is number &&
+             data.percentage is number;
+    }
+
+    // Collection: Users
+    // Admin (maruyalexander1@gmail.com) can read all users; users can read and manage their own profile
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && resource.data.id == request.auth.uid);
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (isOwner(userId) && isValidUser(incoming()) && (
+          incoming().role == existing().role || incoming().email == 'maruyalexander1@gmail.com'
+        ))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Collection: Admins
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Collection: Exam Results
+    // Admin can inspect and read all evaluations; students can read and create their own
+    match /exam_results/{resultId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && isValidExamResult(incoming());
+      allow update: if isAdmin();
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // Collection: Verification Codes
+    match /verification_codes/{codeId} {
+      allow read, write: if true;
+    }
+  }
+}

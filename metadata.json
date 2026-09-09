@@ -1,0 +1,10 @@
+{
+  "name": "Testify - Generador de Exámenes con IA",
+  "description": "Crea exámenes personalizados tipo test y de desarrollo a partir de tus fotos o PDF de temario y evalúa tus respuestas con IA.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

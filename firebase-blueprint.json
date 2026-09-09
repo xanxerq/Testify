@@ -1,0 +1,189 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered application user profile and authentication state",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique user ID matching Firebase Auth UID",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the user",
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address",
+          "maxLength": 150
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Avatar URL or generator link",
+          "maxLength": 500
+        },
+        "role": {
+          "type": "string",
+          "description": "Role of the user in the platform",
+          "enum": ["admin", "user"]
+        },
+        "provider": {
+          "type": "string",
+          "description": "Authentication provider",
+          "enum": ["google", "email"]
+        },
+        "emailVerified": {
+          "type": "boolean",
+          "description": "Whether the user verified their email with a code"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of account registration",
+          "maxLength": 50
+        }
+      },
+      "required": ["id", "name", "email", "role", "provider", "emailVerified", "createdAt"]
+    },
+    "ExamResult": {
+      "title": "ExamResult",
+      "description": "Completed student exam evaluation, scores, and AI feedback",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique evaluation ID",
+          "maxLength": 128
+        },
+        "examId": {
+          "type": "string",
+          "description": "ID of the associated exam template",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the student who took the exam",
+          "maxLength": 128
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "Email of the student who completed the exam",
+          "maxLength": 150
+        },
+        "userName": {
+          "type": "string",
+          "description": "Display name of the student",
+          "maxLength": 100
+        },
+        "examTitle": {
+          "type": "string",
+          "description": "Title of the exam",
+          "maxLength": 200
+        },
+        "subject": {
+          "type": "string",
+          "description": "Subject or academic field",
+          "maxLength": 100
+        },
+        "topic": {
+          "type": "string",
+          "description": "Specific syllabus topic evaluated",
+          "maxLength": 150
+        },
+        "level": {
+          "type": "string",
+          "description": "Educational academic level",
+          "maxLength": 50
+        },
+        "completedAt": {
+          "type": "string",
+          "description": "ISO timestamp of completion",
+          "maxLength": 50
+        },
+        "totalScore": {
+          "type": "number",
+          "description": "Total points obtained by student"
+        },
+        "maxPossibleScore": {
+          "type": "number",
+          "description": "Maximum points achievable"
+        },
+        "percentage": {
+          "type": "number",
+          "description": "Percentage score (0 to 100)"
+        },
+        "testScore": {
+          "type": "number",
+          "description": "Score from multiple choice questions"
+        },
+        "maxTestScore": {
+          "type": "number",
+          "description": "Maximum multiple choice score"
+        },
+        "openScore": {
+          "type": "number",
+          "description": "Score from open reasoning questions"
+        },
+        "maxOpenScore": {
+          "type": "number",
+          "description": "Maximum open questions score"
+        },
+        "generalFeedback": {
+          "type": "string",
+          "description": "Overall pedagogical summary feedback from AI",
+          "maxLength": 1000
+        }
+      },
+      "required": ["id", "examId", "userId", "examTitle", "subject", "topic", "level", "completedAt", "totalScore", "maxPossibleScore", "percentage"]
+    },
+    "VerificationCode": {
+      "title": "VerificationCode",
+      "description": "Six-digit email verification code during registration",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Email receiving verification code",
+          "maxLength": 150
+        },
+        "code": {
+          "type": "string",
+          "description": "6-digit numeric verification code",
+          "maxLength": 6,
+          "minLength": 6
+        },
+        "expiresAt": {
+          "type": "string",
+          "description": "Expiration ISO timestamp",
+          "maxLength": 50
+        },
+        "verified": {
+          "type": "boolean",
+          "description": "Verification status"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp",
+          "maxLength": 50
+        }
+      },
+      "required": ["email", "code", "expiresAt", "verified", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles. Admin (maruyalexander1@gmail.com) has full read access across all users. Individual users can read and update their own document."
+    },
+    "/exam_results/{resultId}": {
+      "schema": "ExamResult",
+      "description": "History of exam submissions and AI grades. Admin can read all results; students can read and create their own."
+    },
+    "/verification_codes/{codeId}": {
+      "schema": "VerificationCode",
+      "description": "Pending email verification codes created during registration."
+    }
+  }
+}
