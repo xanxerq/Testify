@@ -1,25 +1,8 @@
-import {
-  signInWithPopup,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-  User as FirebaseUser,
-} from 'firebase/auth';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  getDocs,
-  collection,
-  query,
-  orderBy,
-  deleteDoc,
-} from 'firebase/firestore';
-import { auth, db, googleProvider } from './firebase';
-import { handleFirestoreError, OperationType } from './firebaseErrors';
+import { supabase, isSupabaseConfigured } from './supabase';
 import { User } from '../types';
 
 const ADMIN_EMAIL = 'maruyalexander1@gmail.com';
-const STORAGE_KEY_CURRENT_USER = 'exam_ai_current_user';
+const STORAGE_KEY_CURRENT_USER = 'testify_supabase_current_user';
 
 export const authService = {
   // Check if an email is administrator
@@ -28,12 +11,17 @@ export const authService = {
     return email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
   },
 
-  // Get currently logged-in user from localStorage fallback or auth
+  // Check if Supabase connection is ready
+  isConfigured(): boolean {
+    return isSupabaseConfigured();
+  },
+
+  // Get currently cached user
   getCurrentUser(): User | null {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_CURRENT_USER);
       if (raw) {
-        const u = JSON.parse(raw);
+        const u: User = JSON.parse(raw);
         if (this.isAdminEmail(u.email)) {
           u.role = 'admin';
         }
@@ -45,7 +33,7 @@ export const authService = {
     }
   },
 
-  // Save current active user
+  // Save current active user in memory/storage
   setCurrentUser(user: User | null): void {
     if (user) {
       if (this.isAdminEmail(user.email)) {
@@ -57,264 +45,243 @@ export const authService = {
     }
   },
 
-  // Sign in with Google (Firebase Popup)
-  async signInWithGoogle(): Promise<User> {
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const fbUser = result.user;
-      const email = fbUser.email || '';
-      const isAdmin = this.isAdminEmail(email);
+  // Map Supabase User to App User
+  mapSupabaseUser(sbUser: any): User {
+    const email = sbUser.email || '';
+    const metadata = sbUser.user_metadata || {};
+    const name =
+      metadata.name ||
+      metadata.full_name ||
+      email.split('@')[0] ||
+      'Estudiante';
+    const avatar =
+      metadata.avatar_url ||
+      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sbUser.id || name)}`;
+    const isAdmin = this.isAdminEmail(email);
+    const provider = sbUser.app_metadata?.provider === 'google' ? 'google' : 'email';
 
-      const user: User = {
-        id: fbUser.uid,
-        name: fbUser.displayName || 'Usuario Google',
-        email: email,
-        avatar: fbUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(fbUser.uid)}`,
-        role: isAdmin ? 'admin' : 'user',
-        provider: 'google',
-        emailVerified: true,
-        createdAt: fbUser.metadata?.creationTime || new Date().toISOString(),
-      };
-
-      // Persist to Firestore database: /users/{userId}
-      const userRef = doc(db, 'users', user.id);
-      try {
-        await setDoc(userRef, user, { merge: true });
-        if (isAdmin) {
-          // Add to admins collection for security rules exists(/databases/.../admins/...)
-          await setDoc(doc(db, 'admins', user.id), {
-            uid: user.id,
-            email: user.email,
-            assignedAt: new Date().toISOString(),
-          }, { merge: true });
-        }
-      } catch (dbErr) {
-        handleFirestoreError(dbErr, OperationType.WRITE, `users/${user.id}`);
-      }
-
-      this.setCurrentUser(user);
-      return user;
-    } catch (err: any) {
-      console.error('Error signing in with Google:', err);
-      // Handle popup closed or iframe restrictions gracefully
-      if (err.code === 'auth/popup-closed-by-user') {
-        throw new Error('Has cerrado la ventana de inicio de sesión de Google antes de finalizar.');
-      } else if (err.code === 'auth/popup-blocked') {
-        throw new Error('Tu navegador ha bloqueado la ventana emergente de Google. Por favor, permite ventanas emergentes para este sitio.');
-      } else if (err.code === 'auth/cancelled-popup-request') {
-        throw new Error('Operación cancelada.');
-      }
-      throw new Error(err.message || 'No se pudo completar el inicio de sesión con Google.');
-    }
+    return {
+      id: sbUser.id,
+      name,
+      email,
+      avatar,
+      role: isAdmin ? 'admin' : 'user',
+      provider,
+      emailVerified: Boolean(sbUser.email_confirmed_at),
+      createdAt: sbUser.created_at || new Date().toISOString(),
+    };
   },
 
-  // Step 1 of Email Registration: Request 6-digit verification code
-  async requestVerificationCode(email: string, name: string): Promise<{ code?: string; message: string }> {
+  // Register with Supabase (Email and Password)
+  async registerWithEmail(
+    name: string,
+    email: string,
+    password: string
+  ): Promise<{ user: User; sessionActive: boolean; message?: string }> {
     const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
+
     if (!cleanEmail || !cleanEmail.includes('@')) {
       throw new Error('Por favor, introduce un correo electrónico válido.');
     }
-    if (!name.trim()) {
-      throw new Error('Por favor, introduce tu nombre.');
+    if (!cleanName) {
+      throw new Error('Por favor, introduce tu nombre completo.');
+    }
+    if (!password || password.length < 6) {
+      throw new Error('La contraseña debe tener un mínimo de 6 caracteres.');
     }
 
-    const response = await fetch('/api/send-verification-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, name: name.trim() }),
+    if (!isSupabaseConfigured()) {
+      throw new Error(
+        'Supabase no está configurado. Por favor, define VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en la configuración.'
+      );
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: password,
+      options: {
+        data: {
+          name: cleanName,
+          full_name: cleanName,
+          avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanName)}`,
+        },
+      },
     });
 
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || 'Error al solicitar el código de verificación.');
+    if (error) {
+      if (error.message.toLowerCase().includes('already registered')) {
+        throw new Error('Ya existe una cuenta registrada con este correo electrónico.');
+      }
+      throw new Error(error.message || 'Error al registrar usuario en Supabase.');
+    }
+
+    if (!data.user) {
+      throw new Error('No se pudo crear la cuenta de usuario.');
+    }
+
+    const mappedUser = this.mapSupabaseUser(data.user);
+    const sessionActive = Boolean(data.session);
+
+    if (sessionActive) {
+      this.setCurrentUser(mappedUser);
     }
 
     return {
-      code: data.code,
-      message: data.message,
+      user: mappedUser,
+      sessionActive,
+      message: sessionActive
+        ? '¡Cuenta creada y sesión iniciada!'
+        : '¡Cuenta creada con éxito! Si tu proyecto tiene confirmación de correo requerida, revisa tu bandeja de entrada para verificar tu cuenta.',
     };
   },
 
-  // Step 2 of Email Registration: Verify code and create account in Firestore
-  async verifyCodeAndRegister(
-    name: string,
-    email: string,
-    code: string
-  ): Promise<User> {
+  // Login with Supabase (Email and Password)
+  async signInWithEmail(email: string, password: string): Promise<User> {
     const cleanEmail = email.trim().toLowerCase();
-    const cleanName = name.trim();
-    const cleanCode = code.trim();
 
-    if (!cleanCode || cleanCode.length !== 6) {
-      throw new Error('El código de verificación debe tener 6 dígitos numéricos.');
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Por favor, introduce un correo electrónico válido.');
+    }
+    if (!password) {
+      throw new Error('Por favor, introduce tu contraseña.');
     }
 
-    // Verify against server API
-    const verifyRes = await fetch('/api/verify-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, code: cleanCode }),
+    if (!isSupabaseConfigured()) {
+      throw new Error(
+        'Supabase no está configurado. Por favor, define VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en la configuración.'
+      );
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password: password,
     });
 
-    const verifyData = await verifyRes.json();
-    if (!verifyRes.ok || !verifyData.valid) {
-      throw new Error(verifyData.error || 'El código de verificación es incorrecto o ha caducado.');
-    }
-
-    // Create user ID
-    const userId = `usr_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const isAdmin = this.isAdminEmail(cleanEmail);
-
-    const newUser: User = {
-      id: userId,
-      name: cleanName,
-      email: cleanEmail,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanName)}`,
-      role: isAdmin ? 'admin' : 'user',
-      provider: 'email',
-      emailVerified: true,
-      createdAt: new Date().toISOString(),
-    };
-
-    // Save to Firestore database: /users/{userId}
-    try {
-      await setDoc(doc(db, 'users', newUser.id), newUser);
-      if (isAdmin) {
-        await setDoc(doc(db, 'admins', newUser.id), {
-          uid: newUser.id,
-          email: newUser.email,
-          assignedAt: new Date().toISOString(),
-        });
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
+        throw new Error('El correo electrónico o la contraseña son incorrectos.');
       }
-    } catch (dbErr) {
-      // If client auth rule restricts writing before auth login, keep in local storage
-      console.warn('Firestore write warning:', dbErr);
+      if (msg.includes('email not confirmed')) {
+        throw new Error('Tu correo aún no está confirmado. Revisa el enlace de verificación en tu bandeja de entrada.');
+      }
+      throw new Error(error.message || 'No se pudo iniciar sesión.');
     }
 
-    this.setCurrentUser(newUser);
-    return newUser;
+    if (!data.user) {
+      throw new Error('No se recibió la información del usuario.');
+    }
+
+    const mappedUser = this.mapSupabaseUser(data.user);
+    this.setCurrentUser(mappedUser);
+    return mappedUser;
   },
 
-  // Sign in with Email
-  async signInWithEmail(email: string): Promise<User> {
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      throw new Error('Introduce un correo electrónico válido.');
+  // Login with Google via Supabase OAuth
+  async signInWithGoogle(): Promise<void> {
+    if (!isSupabaseConfigured()) {
+      throw new Error(
+        'Supabase no está configurado. Por favor, define VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en la configuración.'
+      );
     }
 
-    const userId = `usr_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const userRef = doc(db, 'users', userId);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
 
-    let foundUser: User | null = null;
-    try {
-      const snap = await getDoc(userRef);
-      if (snap.exists()) {
-        foundUser = snap.data() as User;
-      }
-    } catch {
-      // Fallback
-    }
-
-    if (!foundUser) {
-      // Check if this is the admin email
-      const isAdmin = this.isAdminEmail(cleanEmail);
-      foundUser = {
-        id: userId,
-        name: cleanEmail.split('@')[0],
-        email: cleanEmail,
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}`,
-        role: isAdmin ? 'admin' : 'user',
-        provider: 'email',
-        emailVerified: true,
-        createdAt: new Date().toISOString(),
-      };
-      try {
-        await setDoc(userRef, foundUser);
-      } catch {
-        // Continue
-      }
-    }
-
-    if (this.isAdminEmail(foundUser.email)) {
-      foundUser.role = 'admin';
-    }
-
-    this.setCurrentUser(foundUser);
-    return foundUser;
-  },
-
-  // Read all users from Firestore Database (for maruyalexander1@gmail.com / Admin role)
-  async getAllUsersFromDatabase(): Promise<User[]> {
-    const path = 'users';
-    try {
-      const usersCol = collection(db, path);
-      const snap = await getDocs(usersCol);
-      const list: User[] = [];
-      snap.forEach((d) => {
-        const u = d.data() as User;
-        if (authService.isAdminEmail(u.email)) {
-          u.role = 'admin';
-        }
-        list.push(u);
-      });
-      // Sort newest first
-      return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    } catch (err) {
-      handleFirestoreError(err, OperationType.LIST, path);
+    if (error) {
+      throw new Error(error.message || 'Error al iniciar sesión con Google mediante Supabase.');
     }
   },
 
   // Sign out
   async signOut(): Promise<void> {
     try {
-      await firebaseSignOut(auth);
+      if (isSupabaseConfigured()) {
+        await supabase.auth.signOut();
+      }
     } catch (err) {
-      console.warn('Firebase signout error:', err);
+      console.warn('Supabase sign out notice:', err);
     }
     this.setCurrentUser(null);
   },
 
-  // Listen for Firebase Auth changes
+  // Real-time auth listener for Supabase
   listenAuthState(onChange: (user: User | null) => void) {
-    return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
-      if (fbUser) {
-        const email = fbUser.email || '';
-        const isAdmin = this.isAdminEmail(email);
+    if (!isSupabaseConfigured()) {
+      // Return cached user if any
+      const cached = this.getCurrentUser();
+      onChange(cached);
+      return () => {};
+    }
 
-        // Fetch user from Firestore
-        const userRef = doc(db, 'users', fbUser.uid);
-        let appUser: User | null = null;
-        try {
-          const snap = await getDoc(userRef);
-          if (snap.exists()) {
-            appUser = snap.data() as User;
-            if (isAdmin) appUser.role = 'admin';
-          }
-        } catch (e) {
-          console.warn('Failed to fetch user doc from firestore:', e);
-        }
-
-        if (!appUser) {
-          appUser = {
-            id: fbUser.uid,
-            name: fbUser.displayName || email.split('@')[0] || 'Estudiante',
-            email,
-            avatar: fbUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(fbUser.uid)}`,
-            role: isAdmin ? 'admin' : 'user',
-            provider: 'google',
-            emailVerified: Boolean(fbUser.emailVerified),
-            createdAt: new Date().toISOString(),
-          };
-          try {
-            await setDoc(userRef, appUser, { merge: true });
-          } catch {
-            // Ignore
-          }
-        }
-
+    // Check existing session on load
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const appUser = this.mapSupabaseUser(session.user);
         this.setCurrentUser(appUser);
         onChange(appUser);
+      } else {
+        const cached = this.getCurrentUser();
+        onChange(cached);
       }
     });
+
+    // Listen to changes (SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED, etc.)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        const appUser = this.mapSupabaseUser(session.user);
+        this.setCurrentUser(appUser);
+        onChange(appUser);
+      } else if (event === 'SIGNED_OUT') {
+        this.setCurrentUser(null);
+        onChange(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  },
+
+  // Admin: Get all users
+  async getAllUsersFromDatabase(): Promise<User[]> {
+    const list: User[] = [];
+    const current = this.getCurrentUser();
+    if (current) {
+      list.push(current);
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        // Try fetching registered users if a 'users' or 'profiles' table exists
+        const { data } = await supabase.from('users').select('*');
+        if (data && Array.isArray(data)) {
+          data.forEach((row) => {
+            if (!list.some((u) => u.id === row.id)) {
+              list.push({
+                id: row.id,
+                name: row.name || row.email?.split('@')[0] || 'Usuario',
+                email: row.email || '',
+                role: this.isAdminEmail(row.email) ? 'admin' : 'user',
+                provider: row.provider || 'email',
+                emailVerified: Boolean(row.email_verified),
+                createdAt: row.created_at || new Date().toISOString(),
+              });
+            }
+          });
+        }
+      } catch {
+        // Ignore if 'users' table is not exposed
+      }
+    }
+
+    return list;
   },
 };

@@ -1,16 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Award,
   BookOpen,
   Calendar,
   CheckCircle2,
   ChevronRight,
+  Database,
   GraduationCap,
   PlusCircle,
+  RefreshCw,
   Search,
   Trash2,
 } from 'lucide-react';
 import { historyService } from '../services/historyService';
+import { isSupabaseConfigured } from '../services/supabase';
 import { ExamResult } from '../types';
 
 interface ExamHistoryProps {
@@ -27,12 +30,29 @@ export const ExamHistory: React.FC<ExamHistoryProps> = ({
   const [results, setResults] = useState<ExamResult[]>(() => historyService.getResults(userId));
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
+  const [loading, setLoading] = useState(false);
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const loadExams = async () => {
+    setLoading(true);
+    try {
+      const fetched = await historyService.fetchResultsFromDb(userId);
+      setResults(fetched);
+    } catch (err) {
+      console.warn('Error fetching exams from Supabase:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadExams();
+  }, [userId]);
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm('¿Deseas eliminar este examen de tu historial?')) {
-      historyService.deleteResult(id);
-      setResults(historyService.getResults(userId));
+      await historyService.deleteResult(id);
+      setResults((prev) => prev.filter((r) => r.id !== id));
     }
   };
 
@@ -63,15 +83,29 @@ export const ExamHistory: React.FC<ExamHistoryProps> = ({
           </p>
         </div>
 
-        <button
-          id="btn-history-new-exam"
-          type="button"
-          onClick={onNewExam}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition-all"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>Hacer Nuevo Examen</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            id="btn-history-refresh"
+            type="button"
+            onClick={loadExams}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs sm:text-sm rounded-xl border border-slate-200 shadow-xs transition-all disabled:opacity-60"
+            title="Recargar exámenes desde Supabase"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
+            <span className="hidden sm:inline">Sincronizar</span>
+          </button>
+
+          <button
+            id="btn-history-new-exam"
+            type="button"
+            onClick={onNewExam}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition-all"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Hacer Nuevo Examen</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}

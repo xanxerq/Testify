@@ -26,12 +26,10 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
-  // Synchronize Firebase auth state automatically
+  // Synchronize Supabase auth state automatically
   useEffect(() => {
     const unsubscribe = authService.listenAuthState((syncedUser) => {
-      if (syncedUser) {
-        setUser(syncedUser);
-      }
+      setUser(syncedUser);
     });
     return () => {
       if (unsubscribe) unsubscribe();

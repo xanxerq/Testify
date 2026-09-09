@@ -131,7 +131,7 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Conectado como <strong className="text-slate-800 font-semibold">{currentUser?.email || 'Administrador'}</strong> • Firestore Enterprise
+                Conectado como <strong className="text-slate-800 font-semibold">{currentUser?.email || 'Administrador'}</strong> • Supabase / Tabla &apos;exams&apos;
               </p>
             </div>
           </div>
@@ -501,25 +501,38 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
                   <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
-                    Detalles de Base de Datos
+                    Detalles de Supabase & Exámenes
                   </h5>
                   <ul className="text-xs space-y-2 text-slate-600">
-                    <li><strong>Motor:</strong> Cloud Firestore (Enterprise Edition)</li>
-                    <li><strong>Database ID:</strong> <code className="bg-slate-200/70 px-1 py-0.5 rounded text-[11px]">ai-studio-generadordeexmen-08bbcb78-814d-4fde-8d8d-a195d4833fe7</code></li>
-                    <li><strong>Proyecto:</strong> <code className="bg-slate-200/70 px-1 py-0.5 rounded text-[11px]">tribal-obelisk-kpqwl</code></li>
+                    <li><strong>Motor:</strong> Supabase (PostgreSQL + Auth)</li>
+                    <li><strong>Tabla de exámenes:</strong> <code className="bg-slate-200/70 px-1 py-0.5 rounded text-[11px] font-bold text-emerald-700">exams</code></li>
+                    <li><strong>Variables de entorno:</strong> <code className="bg-slate-200/70 px-1 py-0.5 rounded text-[11px]">VITE_SUPABASE_URL</code> y <code className="bg-slate-200/70 px-1 py-0.5 rounded text-[11px]">VITE_SUPABASE_ANON_KEY</code></li>
                     <li><strong>Administrador asignado:</strong> <code className="bg-slate-200/70 px-1 py-0.5 rounded text-[11px]">{currentUser?.email || 'Cuenta autorizada'}</code></li>
                   </ul>
                 </div>
 
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
                   <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
-                    Políticas de Verificación de Cuenta
+                    Esquema SQL de la tabla &apos;exams&apos;
                   </h5>
-                  <ul className="text-xs space-y-2 text-slate-600">
-                    <li><strong>Registro por Email:</strong> Requiere código de verificación de 6 dígitos numéricos.</li>
-                    <li><strong>Registro por Google:</strong> Se autentica con cuenta verificada de Google mediante popup seguro.</li>
-                    <li><strong>Validez del código:</strong> 15 minutos de vigencia por solicitud.</li>
-                  </ul>
+                  <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                    Si creas la tabla en el SQL Editor de tu Supabase Dashboard:
+                  </p>
+                  <pre className="text-[10px] bg-slate-900 text-emerald-300 p-2.5 rounded-lg overflow-x-auto font-mono">
+{`create table if not exists exams (
+  id text primary key,
+  user_id text not null,
+  title text,
+  subject text,
+  topic text,
+  level text,
+  score numeric,
+  max_score numeric,
+  percentage numeric,
+  data jsonb,
+  created_at timestamptz default now()
+);`}
+                  </pre>
                 </div>
               </div>
             </div>
