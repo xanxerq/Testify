@@ -95,5 +95,11 @@ service cloud.firestore {
     match /verification_codes/{codeId} {
       allow read, write: if true;
     }
+
+    // Collection: Exam Rooms (Multiplayer Challenge Mode with Friends)
+    match /exam_rooms/{roomId} {
+      allow read, create, update: if true;
+      allow delete: if isAdmin();
+    }
   }
 }

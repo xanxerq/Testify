@@ -1,13 +1,14 @@
 import React from 'react';
-import { BookOpen, Database, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { BookOpen, Database, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, User as UserIcon, Users } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
   user: User | null;
-  activeView: 'create' | 'exam' | 'results' | 'history';
-  onNavigate: (view: 'create' | 'history') => void;
+  activeView: 'create' | 'exam' | 'results' | 'history' | 'notes';
+  onNavigate: (view: 'create' | 'history' | 'notes') => void;
   onOpenAuth: () => void;
   onOpenAdmin: () => void;
+  onOpenRoomsModal: () => void;
   onSignOut: () => void;
 }
 
@@ -17,6 +18,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigate,
   onOpenAuth,
   onOpenAdmin,
+  onOpenRoomsModal,
   onSignOut,
 }) => {
   const isAdmin = user?.role === 'admin' || user?.email.toLowerCase() === 'maruyalexander1@gmail.com';
@@ -42,13 +44,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-500 hidden sm:block">
-              Genera exámenes con IA a partir de tus apuntes y temarios
+              Genera exámenes y apuntes con IA a partir de tus fotos y temarios
             </p>
           </div>
         </div>
 
         {/* Center / Actions Navigation */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             id="nav-btn-new-exam"
             onClick={() => onNavigate('create')}
@@ -63,6 +65,19 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           <button
+            id="nav-btn-notes"
+            onClick={() => onNavigate('notes')}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeView === 'notes'
+                ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span className="hidden xs:inline">Crear Apuntes</span>
+          </button>
+
+          <button
             id="nav-btn-history"
             onClick={() => onNavigate('history')}
             className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
@@ -73,6 +88,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <History className="w-4 h-4" />
             <span className="hidden xs:inline">Historial</span>
+          </button>
+
+          <button
+            id="nav-btn-multiplayer"
+            onClick={onOpenRoomsModal}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
+            title="Hacer examen con amigos o unirse a sala con código"
+          >
+            <Users className="w-4 h-4 text-indigo-600" />
+            <span className="hidden sm:inline">Con Amigos</span>
           </button>
 
           {/* Admin Database Viewer Button (shown for maruyalexander1@gmail.com / role === admin) */}

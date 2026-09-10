@@ -1,5 +1,18 @@
 import { GoogleGenAI } from '@google/genai';
-import { EducationalLevel, Exam, ExamDifficulty, ExamSetupConfig, OpenQuestion, QuestionFeedback, UploadedMaterial } from '../types';
+import {
+  EducationalLevel,
+  Exam,
+  ExamDifficulty,
+  ExamSetupConfig,
+  KeyConceptItem,
+  NotesStyle,
+  OpenQuestion,
+  QuestionFeedback,
+  QuickReviewQuestion,
+  StudyNote,
+  StudyNotesSetupConfig,
+  UploadedMaterial,
+} from '../types';
 
 // WARNING: As explicitly requested by the user, Gemini API calls and @google/genai are executed
 // directly in the frontend application using GEMINI_API_KEY / VITE_GEMINI_API_KEY without invoking
@@ -274,6 +287,199 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
         throw new Error('Límite de cuota de Gemini alcanzado temporalmente. Espera unos segundos e inténtalo de nuevo.');
       }
       throw new Error(err.message || 'Error al procesar el examen con la IA de Gemini.');
+    }
+  },
+
+  // Generate study notes from syllabus materials and educational specifications
+  async generateStudyNotes(
+    config: StudyNotesSetupConfig,
+    materials: UploadedMaterial[]
+  ): Promise<StudyNote> {
+    const subject = (config.subject || '').trim();
+    if (!subject) {
+      throw new Error('El campo de la asignatura es obligatorio y no puede estar vacío.');
+    }
+
+    const topic = (config.topic || '').trim();
+    if (!topic) {
+      throw new Error('El campo del tema específico es obligatorio y no puede estar vacío.');
+    }
+
+    const level: EducationalLevel = config.level || 'Bachillerato';
+    const style: NotesStyle = config.style || 'comprehensive';
+    const focusKeywords = (config.focusKeywords || '').trim();
+    const additionalInstructions = (config.additionalInstructions || '').trim();
+
+    const ai = getGeminiClient();
+
+    // Prepare multimodal parts
+    const contents: any[] = [];
+
+    if (Array.isArray(materials) && materials.length > 0) {
+      for (const mat of materials) {
+        if (!mat) continue;
+
+        if (mat.type === 'text' || mat.mimeType === 'text/plain') {
+          let textBody = '';
+          if (mat.base64Data) {
+            try {
+              textBody = atob(mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim());
+            } catch {
+              textBody = mat.base64Data;
+            }
+          }
+          if (textBody && textBody.trim()) {
+            contents.push({
+              text: `[Material de temario adjunto - ${mat.name || 'Temario'}]:\n${textBody.trim()}`,
+            });
+          }
+          continue;
+        }
+
+        if (mat.base64Data) {
+          const cleanBase64 = mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim();
+          if (!cleanBase64) continue;
+
+          let mimeType = (mat.mimeType || 'image/jpeg').toLowerCase();
+          if (mimeType === 'application/pdf' && !cleanBase64.startsWith('JVBERi')) {
+            try {
+              const decoded = atob(cleanBase64);
+              if (decoded && decoded.trim()) {
+                contents.push({
+                  text: `[Material de temario adjunto - ${mat.name || 'Temario'}]:\n${decoded.trim()}`,
+                });
+                continue;
+              }
+            } catch {
+              // Ignore
+            }
+          }
+
+          contents.push({
+            inlineData: {
+              mimeType,
+              data: cleanBase64,
+            },
+          });
+        }
+      }
+    }
+
+    const styleInstructions: Record<NotesStyle, string> = {
+      comprehensive:
+        'Elabora un RESUMEN COMPLETO, profundo y estructurado. Organízalo con títulos jerárquicos (H2, H3), explicaciones claras paso a paso, ejemplos prácticos clarificadores, advertencias sobre errores comunes y una conclusión sintética.',
+      outline:
+        'Elabora un ESQUEMA CONCEPTUAL y GUÍA ESTRUCTURADA con viñetas anidadas, jerarquías visuales claras, palabras clave destacadas en negrita y relaciones lógicas entre conceptos.',
+      flashcards:
+        'Elabora una GUÍA DE APUNTES orientada a TARJETAS DE ESTUDIO y REPASO ACTIVO: preguntas fundamentales seguidas de respuestas explicativas concisas y reglas mnemotécnicas.',
+      glossary:
+        'Elabora un GLOSARIO Y COMPENDIO DE FÓRMULAS/LEYES CLAVE: define minuciosamente cada término técnico, fórmula matemática/científica, ley o principio y cómo se aplica.',
+    };
+
+    const systemPrompt = `Eres un docente pedagogo de excelencia especializado en técnicas de estudio de alto rendimiento (Active Recall, Spaced Repetition y Técnica Feynman).
+Tu objetivo es crear unos apuntes de estudio excepcionales, rigurosos, didácticos y perfectamente adaptados al nivel del alumno.
+Idioma obligatorio: Español.
+
+Parámetros solicitados:
+- Asignatura: "${subject}"
+- Tema específico: "${topic}"
+- Nivel educativo: "${level}"
+- Estilo de apuntes: "${style}" (${styleInstructions[style] || styleInstructions.comprehensive})
+${focusKeywords ? `- Conceptos/palabras clave prioritarias: "${focusKeywords}"` : ''}
+${additionalInstructions ? `- Instrucciones adicionales del estudiante: "${additionalInstructions}"` : ''}
+
+REGLAS DE FORMATO:
+1. Si se han adjuntado fotos, PDF o textos de temario, extrae y sintetiza fielmente lo que contienen, mejorando la redacción, orden y claridad didáctica.
+2. Si no hay material adjunto o es breve, desarrolla el tema de forma rigurosa y didáctica según el currículo estándar para "${level}".
+3. El contenido principal ("contentMarkdown") debe estar redactado en Markdown limpio y agradable:
+   - Usa ## y ### para títulos y subtítulos (no uses H1 sueltos por todas partes).
+   - Usa negrita para términos cruciales.
+   - Usa listas ordenadas o no ordenadas cuando sea pedagógicamente apropiado.
+   - Usa tablas markdown para comparar conceptos si es útil.
+   - Incluye bloques visuales con "💡 Consejo para el examen:" o "⚠️ Error frecuente:".
+4. Extrae entre 4 y 8 conceptos clave ("keyConcepts") con término, definición precisa y nota o ejemplo.
+5. Formula entre 3 y 5 preguntas rápidas de autoevaluación ("quickReviewQuestions") con su respuesta explicativa para que el alumno pueda comprobar si ha retenido lo estudiado.`;
+
+    const userPromptText = `Por favor, elabora los apuntes de estudio solicitados sobre "${topic}" (${subject}) en formato JSON con la siguiente estructura exacta:
+{
+  "title": "Título descriptivo y atractivo de los apuntes",
+  "summary": "Resumen ejecutivo de 2-3 frases que sintetiza el núcleo del tema",
+  "contentMarkdown": "## 1. Introducción y Fundamentos\\n\\nContenido completo y enriquecido en Markdown...",
+  "keyConcepts": [
+    {
+      "term": "Nombre del concepto o fórmula",
+      "definition": "Definición clara y concisa",
+      "exampleOrNote": "Ejemplo clarificador o nota mnemotécnica"
+    }
+  ],
+  "quickReviewQuestions": [
+    {
+      "question": "¿Pregunta de comprobación rápida?",
+      "answer": "Respuesta explicativa correcta y fundamentada."
+    }
+  ],
+  "tags": ["Etiqueta1", "Etiqueta2", "Etiqueta3"]
+}
+
+Devuelve exclusivamente el objeto JSON válido.`;
+
+    contents.push({ text: userPromptText });
+
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash',
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: 'application/json',
+          temperature: 0.3,
+          maxOutputTokens: 8192,
+        },
+      });
+
+      const responseText = response.text || '';
+      if (!responseText.trim()) {
+        throw new Error('La IA no devolvió ningún contenido para los apuntes.');
+      }
+
+      let parsed: any;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('La IA no devolvió una estructura JSON legible.');
+        }
+      }
+
+      const note: StudyNote = {
+        id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        title: parsed.title || `Apuntes de ${subject}: ${topic}`,
+        subject,
+        topic,
+        level,
+        style,
+        createdAt: new Date().toISOString(),
+        summary: parsed.summary || `Apuntes de estudio elaborados para ${topic}.`,
+        contentMarkdown: parsed.contentMarkdown || `## ${topic}\n\nNo se pudo recuperar el texto extendido.`,
+        keyConcepts: Array.isArray(parsed.keyConcepts) ? parsed.keyConcepts : [],
+        quickReviewQuestions: Array.isArray(parsed.quickReviewQuestions) ? parsed.quickReviewQuestions : [],
+        tags: Array.isArray(parsed.tags) ? parsed.tags : [subject, topic],
+      };
+
+      return note;
+    } catch (err: any) {
+      console.error('Error generating study notes with Gemini API:', err);
+      const msg = err.message || '';
+      if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
+        throw new Error('La clave GEMINI_API_KEY no es válida. Comprueba que sea correcta en la configuración.');
+      }
+      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+        throw new Error('Límite de cuota de Gemini alcanzado temporalmente. Espera unos segundos e inténtalo de nuevo.');
+      }
+      throw new Error(err.message || 'Error al procesar los apuntes con la IA de Gemini.');
     }
   },
 

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   AlertCircle,
@@ -16,20 +16,32 @@ import {
   Sparkles,
   TrendingUp,
   XCircle,
+  Users,
 } from 'lucide-react';
 import { ExamResult, MultipleChoiceQuestion, OpenQuestion } from '../types';
+import { RoomLeaderboard } from './RoomLeaderboard';
+import { exportExamResultToPdf } from '../utils/pdfExport';
 
 interface ExamResultsProps {
   result: ExamResult;
   onRetake: () => void;
   onNewExam: () => void;
+  roomId?: string | null;
+  roomCode?: string | null;
+  currentParticipantId?: string | null;
 }
 
 export const ExamResults: React.FC<ExamResultsProps> = ({
   result,
   onRetake,
   onNewExam,
+  roomId,
+  roomCode,
+  currentParticipantId,
 }) => {
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfSuccess, setPdfSuccess] = useState(false);
+
   useEffect(() => {
     // Trigger celebratory confetti if passed
     if (result.percentage >= 60) {
@@ -185,26 +197,55 @@ export const ExamResults: React.FC<ExamResultsProps> = ({
 
         {/* Action Controls */}
         <div className="mt-6 pt-5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               id="btn-retake-exam"
               type="button"
               onClick={onRetake}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm rounded-xl transition-colors"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm rounded-xl transition-colors cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
               <span>Repetir examen</span>
             </button>
 
             <button
+              id="btn-download-pdf-exam"
+              type="button"
+              disabled={isGeneratingPdf}
+              onClick={() => {
+                try {
+                  setIsGeneratingPdf(true);
+                  exportExamResultToPdf(result, roomCode);
+                  setPdfSuccess(true);
+                  setTimeout(() => setPdfSuccess(false), 3000);
+                } catch (e) {
+                  console.error(e);
+                  window.print();
+                } finally {
+                  setIsGeneratingPdf(false);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-xs cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-indigo-600" />
+              <span>
+                {pdfSuccess
+                  ? '¡PDF Descargado!'
+                  : isGeneratingPdf
+                  ? 'Generando PDF...'
+                  : 'Descargar PDF (con corrección y nota)'}
+              </span>
+            </button>
+
+            <button
               id="btn-print-exam"
               type="button"
               onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm rounded-xl transition-colors"
-              title="Imprimir informe"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm rounded-xl transition-colors cursor-pointer"
+              title="Imprimir informe en papel o guardar en PDF del navegador"
             >
               <Printer className="w-4 h-4" />
-              <span className="hidden sm:inline">Imprimir</span>
+              <span>Imprimir</span>
             </button>
           </div>
 
@@ -212,13 +253,21 @@ export const ExamResults: React.FC<ExamResultsProps> = ({
             id="btn-new-exam"
             type="button"
             onClick={onNewExam}
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition-all"
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition-all cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
             <span>Crear Nuevo Examen</span>
           </button>
         </div>
       </div>
+
+      {/* If exam was taken with friends: Show Live Room Leaderboard */}
+      {roomId && (
+        <RoomLeaderboard
+          roomId={roomId}
+          currentUserId={currentParticipantId || result.userId}
+        />
+      )}
 
       {/* Detailed Question By Question Correction */}
       <div className="space-y-6">

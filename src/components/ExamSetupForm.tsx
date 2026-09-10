@@ -17,6 +17,7 @@ import {
   Sparkles,
   Trash2,
   UploadCloud,
+  Users,
   Wand2,
 } from 'lucide-react';
 import { DEMO_PRESETS, POPULAR_SUBJECTS } from '../data/demoMaterials';
@@ -24,10 +25,13 @@ import { EducationalLevel, ExamDifficulty, ExamSetupConfig, UploadedMaterial } f
 import { CameraModal } from './CameraModal';
 
 interface ExamSetupFormProps {
-  onGenerate: (config: ExamSetupConfig, materials: UploadedMaterial[]) => Promise<void>;
+  onGenerate: (config: ExamSetupConfig, materials: UploadedMaterial[], startMultiplayer?: boolean) => Promise<void>;
   isLoading: boolean;
   onOpenAuthRequired: () => void;
   isAuthenticated: boolean;
+  initialConfig?: Partial<ExamSetupConfig> | null;
+  initialMaterials?: UploadedMaterial[] | null;
+  onOpenJoinRoom?: () => void;
 }
 
 const EDUCATIONAL_LEVELS: { level: EducationalLevel; label: string; desc: string }[] = [
@@ -44,23 +48,43 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
   isLoading,
   onOpenAuthRequired,
   isAuthenticated,
+  initialConfig,
+  initialMaterials,
+  onOpenJoinRoom,
 }) => {
   // Form state
-  const [subject, setSubject] = useState('Biología Celular');
-  const [topic, setTopic] = useState('La Fotosíntesis y la Respiración Celular');
-  const [level, setLevel] = useState<EducationalLevel>('Bachillerato');
-  const [difficulty, setDifficulty] = useState<ExamDifficulty>('Media');
-  const [testCount, setTestCount] = useState<number>(5);
-  const [openCount, setOpenCount] = useState<number>(2);
-  const [timed, setTimed] = useState<boolean>(true);
-  const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(20);
-  const [additionalNotes, setAdditionalNotes] = useState<string>('');
+  const [subject, setSubject] = useState(initialConfig?.subject || 'Biología Celular');
+  const [topic, setTopic] = useState(initialConfig?.topic || 'La Fotosíntesis y la Respiración Celular');
+  const [level, setLevel] = useState<EducationalLevel>(initialConfig?.level || 'Bachillerato');
+  const [difficulty, setDifficulty] = useState<ExamDifficulty>(initialConfig?.difficulty || 'Media');
+  const [testCount, setTestCount] = useState<number>(initialConfig?.testCount ?? 5);
+  const [openCount, setOpenCount] = useState<number>(initialConfig?.openCount ?? 2);
+  const [timed, setTimed] = useState<boolean>(initialConfig?.timed ?? true);
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(initialConfig?.timeLimitMinutes ?? 20);
+  const [additionalNotes, setAdditionalNotes] = useState<string>(initialConfig?.additionalNotes || '');
 
   // Uploaded materials
-  const [materials, setMaterials] = useState<UploadedMaterial[]>([]);
+  const [materials, setMaterials] = useState<UploadedMaterial[]>(initialMaterials || []);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (initialConfig) {
+      if (initialConfig.subject) setSubject(initialConfig.subject);
+      if (initialConfig.topic) setTopic(initialConfig.topic);
+      if (initialConfig.level) setLevel(initialConfig.level);
+      if (initialConfig.difficulty) setDifficulty(initialConfig.difficulty);
+      if (typeof initialConfig.testCount === 'number') setTestCount(initialConfig.testCount);
+      if (typeof initialConfig.openCount === 'number') setOpenCount(initialConfig.openCount);
+      if (typeof initialConfig.timed === 'boolean') setTimed(initialConfig.timed);
+      if (typeof initialConfig.timeLimitMinutes === 'number') setTimeLimitMinutes(initialConfig.timeLimitMinutes);
+      if (initialConfig.additionalNotes) setAdditionalNotes(initialConfig.additionalNotes);
+    }
+    if (initialMaterials && initialMaterials.length > 0) {
+      setMaterials(initialMaterials);
+    }
+  }, [initialConfig, initialMaterials]);
 
   // Handle file input (Photos / PDF)
   const processFiles = (files: FileList | File[]) => {
@@ -157,8 +181,8 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
     setValidationError(null);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent, isMultiplayer = false) => {
+    if (e) e.preventDefault();
     setValidationError(null);
 
     const trimmedSubject = (subject || '').trim();
@@ -210,7 +234,7 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
     };
 
     try {
-      await onGenerate(config, materials);
+      await onGenerate(config, materials, isMultiplayer);
     } catch (err: any) {
       setValidationError(err.message || 'Error al generar el examen con IA. Inténtalo de nuevo.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -722,29 +746,57 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
           </div>
         </div>
 
-        {/* Submit Button */}
-        <div className="pt-2">
-          <button
-            id="btn-generate-exam"
-            type="submit"
-            disabled={isLoading}
-            className="w-full py-4 px-6 bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 hover:from-indigo-700 hover:to-violet-800 text-white font-extrabold rounded-2xl shadow-xl shadow-indigo-600/25 transition-all transform active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-3 text-base sm:text-lg"
-          >
-            {isLoading ? (
-              <>
-                <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>La IA está leyendo tu temario y creando el examen...</span>
-              </>
-            ) : (
-              <>
-                <Wand2 className="w-5 h-5" />
-                <span>Generar Examen con IA ({testCount + openCount} preguntas)</span>
-              </>
-            )}
-          </button>
-          <p className="text-center text-xs text-slate-500 mt-2.5">
-            Las preguntas tipo test se corregirán al instante y las preguntas de desarrollo serán
-            evaluadas con retroalimentación detallada por la IA.
+        {/* Submit Actions */}
+        <div className="pt-3 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              id="btn-generate-exam"
+              type="button"
+              onClick={(e) => handleSubmit(e, false)}
+              disabled={isLoading}
+              className="w-full py-4 px-5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 hover:from-indigo-700 hover:to-violet-800 text-white font-extrabold rounded-2xl shadow-lg shadow-indigo-600/20 transition-all transform active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2.5 text-sm sm:text-base cursor-pointer"
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Creando examen con IA...</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-4 h-4" />
+                  <span>Hacer Examen Individual</span>
+                </>
+              )}
+            </button>
+
+            <button
+              id="btn-generate-exam-multiplayer"
+              type="button"
+              onClick={(e) => handleSubmit(e, true)}
+              disabled={isLoading}
+              className="w-full py-4 px-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-indigo-950 hover:to-slate-900 text-white font-extrabold rounded-2xl shadow-lg border border-indigo-500/40 transition-all transform active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2.5 text-sm sm:text-base cursor-pointer"
+            >
+              <Users className="w-4 h-4 text-amber-400" />
+              <span>Hacer con Amigos (Crear Sala)</span>
+            </button>
+          </div>
+
+          {onOpenJoinRoom && (
+            <div className="text-center pt-1">
+              <button
+                id="btn-link-join-room"
+                type="button"
+                onClick={onOpenJoinRoom}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>¿Tienes un código PIN de un amigo? Haz clic aquí para unirte a su sala</span>
+              </button>
+            </div>
+          )}
+
+          <p className="text-center text-xs text-slate-500 pt-1">
+            Al terminar el examen, podrás descargar un informe PDF completo con todas las correcciones y notas finales.
           </p>
         </div>
       </form>

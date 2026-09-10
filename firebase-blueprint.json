@@ -170,6 +170,59 @@
         }
       },
       "required": ["email", "code", "expiresAt", "verified", "createdAt"]
+    },
+    "ExamRoom": {
+      "title": "ExamRoom",
+      "description": "Multiplayer live exam room for friends to compete and see who scores best",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique room ID",
+          "maxLength": 128
+        },
+        "code": {
+          "type": "string",
+          "description": "Six-letter access code / PIN",
+          "maxLength": 10
+        },
+        "hostId": {
+          "type": "string",
+          "description": "User ID of room creator",
+          "maxLength": 128
+        },
+        "hostName": {
+          "type": "string",
+          "description": "Name of host",
+          "maxLength": 100
+        },
+        "status": {
+          "type": "string",
+          "description": "Current room state",
+          "enum": ["waiting", "in_progress", "completed"]
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp",
+          "maxLength": 50
+        },
+        "examTitle": {
+          "type": "string",
+          "description": "Title of the shared exam",
+          "maxLength": 200
+        },
+        "subject": {
+          "type": "string",
+          "description": "Subject of the exam",
+          "maxLength": 100
+        },
+        "topic": {
+          "type": "string",
+          "description": "Topic of the exam",
+          "maxLength": 150
+        }
+      },
+      "required": ["id", "code", "hostId", "hostName", "status", "createdAt", "examTitle", "subject", "topic"]
     }
   },
   "firestore": {
@@ -184,6 +237,10 @@
     "/verification_codes/{codeId}": {
       "schema": "VerificationCode",
       "description": "Pending email verification codes created during registration."
+    },
+    "/exam_rooms/{roomId}": {
+      "schema": "ExamRoom",
+      "description": "Multiplayer live exam rooms for friends to compete and see who scores best."
     }
   }
 }

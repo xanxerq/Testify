@@ -119,3 +119,73 @@ export interface ExamResult {
   examData: Exam;
   userAnswers: Record<string, string | number>;
 }
+
+export type NotesStyle =
+  | 'comprehensive' // Resumen completo y detallado
+  | 'outline'       // Esquema y puntos clave
+  | 'flashcards'    // Tarjetas y preguntas/respuestas de repaso
+  | 'glossary';     // Glosario y fórmulas/conceptos esenciales
+
+export interface StudyNotesSetupConfig {
+  subject: string;
+  topic: string;
+  level: EducationalLevel;
+  style: NotesStyle;
+  focusKeywords?: string;
+  additionalInstructions?: string;
+}
+
+export interface KeyConceptItem {
+  term: string;
+  definition: string;
+  exampleOrNote?: string;
+}
+
+export interface QuickReviewQuestion {
+  question: string;
+  answer: string;
+}
+
+export interface StudyNote {
+  id: string;
+  userId?: string;
+  title: string;
+  subject: string;
+  topic: string;
+  level: EducationalLevel;
+  style: NotesStyle;
+  createdAt: string;
+  summary: string;
+  contentMarkdown: string;
+  keyConcepts: KeyConceptItem[];
+  quickReviewQuestions: QuickReviewQuestion[];
+  tags: string[];
+}
+
+export interface RoomParticipant {
+  id: string;
+  name: string;
+  avatar?: string;
+  isHost: boolean;
+  joinedAt: string;
+  status: 'waiting' | 'in_exam' | 'finished';
+  score?: number;
+  maxScore?: number;
+  percentage?: number;
+  timeSpentSeconds?: number;
+  finishedAt?: string;
+}
+
+export interface ExamRoom {
+  id: string;
+  code: string;
+  hostId: string;
+  hostName: string;
+  status: 'waiting' | 'in_progress' | 'completed';
+  createdAt: string;
+  startedAt?: string;
+  exam: Exam;
+  participants: Record<string, RoomParticipant>;
+}
+
+

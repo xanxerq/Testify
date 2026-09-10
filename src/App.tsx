@@ -6,9 +6,12 @@ import { ExamSetupForm } from './components/ExamSetupForm';
 import { ExamTaker } from './components/ExamTaker';
 import { ExamResults } from './components/ExamResults';
 import { ExamHistory } from './components/ExamHistory';
+import { StudyNotesView } from './components/StudyNotesView';
+import { RoomLobbyModal } from './components/RoomLobbyModal';
 import { authService } from './services/authService';
 import { geminiService } from './services/geminiService';
 import { historyService } from './services/historyService';
+import { examRoomService } from './services/examRoomService';
 import {
   Exam,
   ExamResult,
@@ -16,21 +19,45 @@ import {
   MultipleChoiceQuestion,
   OpenQuestion,
   QuestionFeedback,
+  StudyNote,
   UploadedMaterial,
   User,
 } from './types';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => authService.getCurrentUser());
-  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history'>('create');
+  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes'>('create');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
-  // Synchronize Supabase auth state automatically
+  // Multiplayer room states
+  const [isRoomLobbyOpen, setIsRoomLobbyOpen] = useState(false);
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [activeRoomCode, setActiveRoomCode] = useState<string | null>(null);
+  const [activeParticipantId, setActiveParticipantId] = useState<string | null>(null);
+  const [initialRoomCode, setInitialRoomCode] = useState<string | null>(null);
+
+  // Pre-configured exam parameters (e.g. from study notes)
+  const [presetExamConfig, setPresetExamConfig] = useState<Partial<ExamSetupConfig> | null>(null);
+  const [presetMaterials, setPresetMaterials] = useState<UploadedMaterial[] | null>(null);
+
+  // Synchronize Supabase auth state automatically & check for room URL parameter (?room=...)
   useEffect(() => {
     const unsubscribe = authService.listenAuthState((syncedUser) => {
       setUser(syncedUser);
     });
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room');
+      if (roomParam) {
+        setInitialRoomCode(roomParam.toUpperCase());
+        setIsRoomLobbyOpen(true);
+      }
+    } catch (e) {
+      console.warn('Error reading URL params:', e);
+    }
+
     return () => {
       if (unsubscribe) unsubscribe();
     };
@@ -46,19 +73,55 @@ export default function App() {
   const [gradingProgressText, setGradingProgressText] = useState<string>('');
 
   // Handle generating exam
-  const handleGenerateExam = async (config: ExamSetupConfig, materials: UploadedMaterial[]) => {
+  const handleGenerateExam = async (
+    config: ExamSetupConfig,
+    materials: UploadedMaterial[],
+    startMultiplayer = false
+  ) => {
     try {
       setIsGenerating(true);
       const exam = await geminiService.generateExam(config, materials);
       setCurrentExam(exam);
-      setActiveView('exam');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      if (startMultiplayer) {
+        // Open lobby for the host to invite friends
+        setIsRoomLobbyOpen(true);
+      } else {
+        // Clear previous room context for individual exam
+        setActiveRoomId(null);
+        setActiveRoomCode(null);
+        setActiveParticipantId(null);
+        setActiveView('exam');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } catch (err: any) {
       console.error('Error in handleGenerateExam:', err);
       throw err;
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // Called when room exam begins
+  const handleStartExamInRoom = async (
+    exam: Exam,
+    roomId: string,
+    participantId: string
+  ) => {
+    setCurrentExam(exam);
+    setActiveRoomId(roomId);
+    setActiveParticipantId(participantId);
+
+    // Fetch code for display
+    try {
+      const r = await examRoomService.getRoomById(roomId);
+      if (r) setActiveRoomCode(r.code);
+    } catch (e) {
+      console.error(e);
+    }
+
+    setActiveView('exam');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Handle grading & submitting exam
@@ -170,6 +233,24 @@ export default function App() {
       // Save to history and sync with Firestore
       await historyService.saveResult(newResult);
 
+      // If playing in a multiplayer room, record this participant's final score in real time
+      if (activeRoomId && activeParticipantId) {
+        try {
+          await examRoomService.submitParticipantResult(
+            activeRoomId,
+            activeParticipantId,
+            {
+              score: totalScore,
+              maxScore: maxPossibleScore,
+              percentage,
+              timeSpentSeconds,
+            }
+          );
+        } catch (roomErr) {
+          console.error('Error submitting room result:', roomErr);
+        }
+      }
+
       setCurrentResult(newResult);
       setActiveView('results');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -194,6 +275,42 @@ export default function App() {
   const handleNewExam = () => {
     setCurrentExam(null);
     setCurrentResult(null);
+    setPresetExamConfig(null);
+    setPresetMaterials(null);
+    setActiveView('create');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleGenerateExamFromNote = (note: StudyNote) => {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(note.contentMarkdown);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64Notes = btoa(binary);
+
+    const noteMaterial: UploadedMaterial = {
+      id: `mat_note_${Date.now()}`,
+      name: `Apuntes_${note.subject.replace(/\s+/g, '_')}.txt`,
+      type: 'text',
+      mimeType: 'text/plain',
+      base64Data: base64Notes,
+      sizeBytes: bytes.byteLength,
+    };
+
+    setPresetExamConfig({
+      subject: note.subject,
+      topic: note.topic,
+      level: note.level,
+      difficulty: 'Media',
+      testCount: 5,
+      openCount: 2,
+      timed: true,
+      timeLimitMinutes: 20,
+      additionalNotes: `Generar preguntas basadas en los siguientes conceptos clave de los apuntes: ${note.keyConcepts.map((k) => k.term).join(', ')}`,
+    });
+    setPresetMaterials([noteMaterial]);
     setActiveView('create');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -222,6 +339,10 @@ export default function App() {
         }}
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onOpenAdmin={() => setIsAdminModalOpen(true)}
+        onOpenRoomsModal={() => {
+          setInitialRoomCode(null);
+          setIsRoomLobbyOpen(true);
+        }}
         onSignOut={handleSignOut}
       />
 
@@ -233,6 +354,20 @@ export default function App() {
             isLoading={isGenerating}
             onOpenAuthRequired={() => setIsAuthModalOpen(true)}
             isAuthenticated={Boolean(user)}
+            initialConfig={presetExamConfig}
+            initialMaterials={presetMaterials}
+            onOpenJoinRoom={() => {
+              setInitialRoomCode(null);
+              setIsRoomLobbyOpen(true);
+            }}
+          />
+        )}
+
+        {activeView === 'notes' && (
+          <StudyNotesView
+            user={user}
+            onOpenAuthRequired={() => setIsAuthModalOpen(true)}
+            onGenerateExamFromNote={handleGenerateExamFromNote}
           />
         )}
 
@@ -242,6 +377,8 @@ export default function App() {
             onSubmit={handleSubmitExam}
             onCancel={handleNewExam}
             isGrading={isGrading}
+            roomCode={activeRoomCode}
+            onOpenFriendInvite={() => setIsRoomLobbyOpen(true)}
           />
         )}
 
@@ -250,6 +387,9 @@ export default function App() {
             result={currentResult}
             onRetake={handleRetakeExam}
             onNewExam={handleNewExam}
+            roomId={activeRoomId}
+            roomCode={activeRoomCode}
+            currentParticipantId={activeParticipantId}
           />
         )}
 
@@ -261,6 +401,16 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Multiplayer Room Lobby Modal */}
+      <RoomLobbyModal
+        isOpen={isRoomLobbyOpen}
+        onClose={() => setIsRoomLobbyOpen(false)}
+        user={user}
+        examToHost={currentExam}
+        initialRoomCode={initialRoomCode}
+        onStartExamInRoom={handleStartExamInRoom}
+      />
 
       {/* Global Grading Overlay Modal */}
       {isGrading && (

@@ -10,6 +10,8 @@ import {
   HelpCircle,
   Lightbulb,
   Send,
+  Users,
+  Trophy,
 } from 'lucide-react';
 import { Exam, ExamQuestion, MultipleChoiceQuestion, OpenQuestion } from '../types';
 
@@ -18,6 +20,8 @@ interface ExamTakerProps {
   onSubmit: (answers: Record<string, string | number>, timeSpentSeconds: number) => void;
   onCancel: () => void;
   isGrading: boolean;
+  roomCode?: string | null;
+  onOpenFriendInvite?: () => void;
 }
 
 export const ExamTaker: React.FC<ExamTakerProps> = ({
@@ -25,6 +29,8 @@ export const ExamTaker: React.FC<ExamTakerProps> = ({
   onSubmit,
   onCancel,
   isGrading,
+  roomCode,
+  onOpenFriendInvite,
 }) => {
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
@@ -98,6 +104,35 @@ export const ExamTaker: React.FC<ExamTakerProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-8 animate-fadeIn">
+      {/* Multiplayer Room Notification Banner */}
+      {roomCode ? (
+        <div className="mb-4 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-900 to-indigo-800 text-white flex items-center justify-between gap-3 text-xs sm:text-sm shadow-md border border-indigo-700">
+          <div className="flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-amber-300 shrink-0" />
+            <span className="font-bold">
+              Reto Multijugador activo: <span className="font-mono text-amber-300">#{roomCode}</span>
+            </span>
+          </div>
+          <span className="text-[11px] text-indigo-200 hidden sm:inline">
+            ¡Completa el examen para ver el podio y quién queda en 1º lugar!
+          </span>
+        </div>
+      ) : onOpenFriendInvite ? (
+        <div className="mb-4 px-4 py-2 rounded-xl bg-indigo-50/70 border border-indigo-100 flex items-center justify-between text-xs text-indigo-900">
+          <span className="flex items-center gap-1.5 font-medium">
+            <Users className="w-4 h-4 text-indigo-600" />
+            <span>¿Quieres competir contra tus compañeros con este examen?</span>
+          </span>
+          <button
+            type="button"
+            onClick={onOpenFriendInvite}
+            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors cursor-pointer"
+          >
+            Retar Amigos
+          </button>
+        </div>
+      ) : null}
+
       {/* Top Header Card */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
