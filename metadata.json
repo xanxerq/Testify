@@ -1,6 +1,6 @@
 {
-  "name": "Testify - Generador de Exámenes con IA",
-  "description": "Genera exámenes y apuntes con IA desde fotos o PDFs, publica apuntes en la comunidad abierta, compite en salas multijugador y descarga informes en PDF con correcciones.",
+  "name": "Testify - Crea y Practica Exámenes con IA",
+  "description": "Testify es la plataforma de inteligencia artificial para crear y practicar exámenes personalizados, generar apuntes, resolver deberes paso a paso con foto y competir en salas de estudio con amigos.",
   "requestFramePermissions": [
     "camera"
   ],

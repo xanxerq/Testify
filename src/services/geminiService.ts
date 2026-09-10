@@ -4,6 +4,9 @@ import {
   Exam,
   ExamDifficulty,
   ExamSetupConfig,
+  HomeworkSolution,
+  HomeworkSolveConfig,
+  HomeworkStep,
   KeyConceptItem,
   NotesStyle,
   OpenQuestion,
@@ -798,6 +801,265 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
         improvements: ['Revisa los criterios de corrección detallados'],
         userAnswer,
       };
+    }
+  },
+
+  /**
+   * Resuelve deberes o ejercicios a partir de foto o texto adjunto
+   * y explica detalladamente cómo se resuelve paso a paso de forma didáctica.
+   */
+  async solveHomeworkExercise(
+    materials: UploadedMaterial[],
+    config?: HomeworkSolveConfig
+  ): Promise<HomeworkSolution> {
+    const contents: any[] = [];
+    let previewUrl: string | undefined = undefined;
+
+    if (Array.isArray(materials) && materials.length > 0) {
+      for (const mat of materials) {
+        if (!mat) continue;
+        if (!previewUrl && mat.previewUrl) {
+          previewUrl = mat.previewUrl;
+        } else if (!previewUrl && mat.base64Data && mat.type === 'image') {
+          previewUrl = mat.base64Data.startsWith('data:')
+            ? mat.base64Data
+            : `data:${mat.mimeType || 'image/jpeg'};base64,${mat.base64Data}`;
+        }
+
+        if (mat.type === 'text' || mat.mimeType === 'text/plain') {
+          let textBody = '';
+          if (mat.base64Data) {
+            try {
+              textBody = atob(mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim());
+            } catch {
+              textBody = mat.base64Data;
+            }
+          }
+          if (textBody.trim()) {
+            contents.push({
+              text: `[Texto del ejercicio / notas adicionales]:\n${textBody.trim()}`,
+            });
+          }
+        } else if (mat.base64Data) {
+          const cleanBase64 = mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim();
+          if (cleanBase64) {
+            contents.push({
+              inlineData: {
+                mimeType: mat.mimeType || 'image/jpeg',
+                data: cleanBase64,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    const subjectHint = config?.subject ? `Asignatura indicada por el alumno: ${config.subject}.` : '';
+    const levelHint = config?.level ? `Nivel educativo del alumno: ${config.level}.` : '';
+    const doubtHint = config?.specificDoubt
+      ? `Duda o indicación específica del alumno: "${config.specificDoubt}". Presta especial atención a responder a esto.`
+      : '';
+
+    const systemPrompt = `Eres un tutor pedagógico de élite y profesor particular paciente, riguroso y didáctico para estudiantes de todos los niveles.
+Tu misión es:
+1. Analizar minuciosamente la imagen o texto del ejercicio/problema de deberes que sube el estudiante.
+2. Transcribir fielmente el enunciado del ejercicio. Si hay fórmulas, diagramas, gráficas o enunciados en la imagen, transcríbelos y descríbelos con precisión.
+3. Resolver el ejercicio con exactitud matemática y conceptual del 100%.
+4. Explicar CÓMO y POR QUÉ se hace cada paso (paso a paso: Paso 1, Paso 2, etc.), con explicaciones pedagógicas claras, fórmulas matemáticas en notación limpia y consejos útiles ("tip") para que el estudiante entienda el razonamiento y sepa hacerlo en el futuro.
+5. Indicar los conceptos o fórmulas clave empleados.
+6. Alertar sobre los errores comunes o trampas típicas que suelen cometer los estudiantes en este tipo de ejercicios.
+7. Crear un ejercicio de práctica similar con su respuesta y breve explicación para afianzar el conocimiento.
+
+${subjectHint}
+${levelHint}
+${doubtHint}
+
+IMPORTANTE: Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta:
+{
+  "subject": "Nombre de la asignatura (ej: Matemáticas, Física y Química, Lengua Castellana, Biología, Historia, Inglés...)",
+  "topic": "Tema específico (ej: Ecuaciones de 2º grado, Cinemática, Análisis sintáctico, Leyes de Newton...)",
+  "exerciseText": "Transcripción clara, completa y ordenada del enunciado del ejercicio detectado en la foto",
+  "finalAnswer": "Resultado o respuesta final directa y destacada (ej: 'x = 3 y x = -2' o 'La fuerza requerida es de 45 N')",
+  "steps": [
+    {
+      "stepNumber": 1,
+      "title": "Título descriptivo del paso (ej: Identificar datos e incógnitas)",
+      "explanation": "Explicación detallada de lo que hacemos en este paso y la razón por la que lo hacemos.",
+      "formulaOrMath": "Fórmula matemática, expresión o cálculo relevante en este paso (ej: 'v = d / t' o '2x + 4 = 10')",
+      "tip": "Consejo pedagógico o regla mnemotécnica para recordar este paso"
+    }
+  ],
+  "keyConcepts": [
+    "Fórmula, teorema o regla 1",
+    "Concepto 2"
+  ],
+  "commonMistakes": [
+    "Error típico 1 a evitar...",
+    "Error típico 2 a evitar..."
+  ],
+  "similarPractice": {
+    "question": "Enunciado de un ejercicio similar para poner a prueba lo aprendido",
+    "answer": "Respuesta correcta al ejercicio de práctica",
+    "explanation": "Breve explicación de la solución del ejercicio de práctica"
+  }
+}`;
+
+    const userPromptText = `Por favor, analiza la imagen adjunta con el ejercicio de deberes, resuélvelo por completo y explícame paso a paso cómo se hace para que lo entienda perfectamente. Asegúrate de devolver el JSON con la estructura solicitada.`;
+
+    contents.push({ text: userPromptText });
+
+    let responseText = '';
+
+    try {
+      const ai = getGeminiClient();
+      const response = await generateContentWithFallback(ai, {
+        primaryModel: GEMINI_TEXT_MODEL,
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+          maxOutputTokens: 8192,
+        },
+      });
+      responseText = response.text || '';
+      if (!responseText.trim()) {
+        throw new Error('La IA no devolvió contenido.');
+      }
+    } catch (primaryErr: any) {
+      console.warn('[Gemini] Fallo en la resolución del ejercicio con Gemini:', primaryErr?.message || primaryErr);
+      const fallbackKey = getFallbackApiKey();
+      if (fallbackKey) {
+        console.log('[Fallback] Activando proveedor alternativo para resolver deberes...');
+        try {
+          responseText = await executeFallbackGeneration({
+            apiKey: fallbackKey,
+            systemPrompt,
+            userPromptText,
+            materials,
+          });
+        } catch (fallbackErr: any) {
+          throw new Error(
+            `Fallo en Gemini (${formatGeminiErrorMessage(primaryErr)}) y en proveedor de respaldo: ${fallbackErr.message || fallbackErr}`
+          );
+        }
+      } else {
+        throw new Error(formatGeminiErrorMessage(primaryErr));
+      }
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(responseText);
+    } catch {
+      const match = responseText.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+      } else {
+        throw new Error('No se pudo interpretar la respuesta estructurada de la solución.');
+      }
+    }
+
+    const steps: HomeworkStep[] = Array.isArray(parsed.steps)
+      ? parsed.steps.map((s: any, idx: number) => ({
+          stepNumber: Number(s.stepNumber) || idx + 1,
+          title: s.title || `Paso ${idx + 1}`,
+          explanation: s.explanation || 'Explicación del paso.',
+          formulaOrMath: s.formulaOrMath || undefined,
+          tip: s.tip || undefined,
+        }))
+      : [
+          {
+            stepNumber: 1,
+            title: 'Resolución del ejercicio',
+            explanation: parsed.finalAnswer || 'Solución obtenida.',
+          },
+        ];
+
+    const solution: HomeworkSolution = {
+      id: `hw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date().toISOString(),
+      subject: parsed.subject || config?.subject || 'Ejercicio',
+      topic: parsed.topic || 'Resolución de Deberes',
+      level: config?.level,
+      exerciseText: parsed.exerciseText || 'Ejercicio propuesto',
+      finalAnswer: parsed.finalAnswer || 'Respuesta calculada con éxito.',
+      steps,
+      keyConcepts: Array.isArray(parsed.keyConcepts) ? parsed.keyConcepts : [],
+      commonMistakes: Array.isArray(parsed.commonMistakes) ? parsed.commonMistakes : [],
+      similarPractice: parsed.similarPractice
+        ? {
+            question: parsed.similarPractice.question || '',
+            answer: parsed.similarPractice.answer || '',
+            explanation: parsed.similarPractice.explanation || '',
+          }
+        : undefined,
+      exerciseImageUrl: previewUrl,
+      additionalNotes: config?.specificDoubt,
+    };
+
+    return solution;
+  },
+
+  /**
+   * Responde dudas o aclaraciones interactivas del alumno sobre un ejercicio resuelto
+   */
+  async askHomeworkDoubt(
+    solution: HomeworkSolution,
+    userQuestion: string,
+    chatHistory: Array<{ role: 'user' | 'model'; text: string }> = []
+  ): Promise<string> {
+    const prompt = `Eres el tutor que acaba de resolver y explicar este ejercicio de deberes para el alumno:
+Enunciado del ejercicio:
+"${solution.exerciseText}"
+
+Respuesta final:
+"${solution.finalAnswer}"
+
+Pasos explicados:
+${solution.steps.map((s) => `Paso ${s.stepNumber} (${s.title}): ${s.explanation} ${s.formulaOrMath ? `[Fórmula: ${s.formulaOrMath}]` : ''}`).join('\n')}
+
+Conceptos clave: ${solution.keyConcepts.join(', ')}
+
+Historial reciente de la conversación:
+${chatHistory.map((h) => `${h.role === 'user' ? 'Alumno' : 'Tutor'}: ${h.text}`).join('\n')}
+
+Nueva duda del alumno:
+"${userQuestion}"
+
+Instrucciones para el tutor:
+- Responde directamente, con mucha amabilidad y paciencia pedagógica.
+- Explica de forma concisa y muy comprensible el por qué de ese paso o cálculo específico.
+- Usa ejemplos sencillos o analogías si ayuda a clarificar.
+- Mantén un tono motivador. Responde en español.`;
+
+    try {
+      const ai = getGeminiClient();
+      const response = await generateContentWithFallback(ai, {
+        primaryModel: GEMINI_TEXT_MODEL,
+        contents: [{ text: prompt }],
+        config: {
+          temperature: 0.3,
+          maxOutputTokens: 2048,
+        },
+      });
+
+      return response.text || 'Aquí tienes la aclaración sobre tu ejercicio.';
+    } catch (err: any) {
+      console.warn('Error respondiendo duda de deberes con Gemini:', err);
+      const fallbackKey = getFallbackApiKey();
+      if (fallbackKey) {
+        try {
+          return await executeFallbackGeneration({
+            apiKey: fallbackKey,
+            systemPrompt: 'Eres un tutor educativo paciente y claro.',
+            userPromptText: prompt,
+          });
+        } catch (e) {
+          throw new Error('No se pudo responder a la duda en este momento. Inténtalo de nuevo.');
+        }
+      }
+      throw new Error(formatGeminiErrorMessage(err));
     }
   },
 };

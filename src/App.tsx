@@ -7,6 +7,7 @@ import { ExamTaker } from './components/ExamTaker';
 import { ExamResults } from './components/ExamResults';
 import { ExamHistory } from './components/ExamHistory';
 import { StudyNotesView } from './components/StudyNotesView';
+import { HomeworkSolverView } from './components/HomeworkSolverView';
 import { RoomLobbyModal } from './components/RoomLobbyModal';
 import { authService } from './services/authService';
 import { geminiService } from './services/geminiService';
@@ -26,7 +27,7 @@ import {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => authService.getCurrentUser());
-  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes'>('create');
+  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework'>('create');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
@@ -360,6 +361,7 @@ export default function App() {
               setInitialRoomCode(null);
               setIsRoomLobbyOpen(true);
             }}
+            onNavigateToHomework={() => setActiveView('homework')}
           />
         )}
 
@@ -368,6 +370,14 @@ export default function App() {
             user={user}
             onOpenAuthRequired={() => setIsAuthModalOpen(true)}
             onGenerateExamFromNote={handleGenerateExamFromNote}
+          />
+        )}
+
+        {activeView === 'homework' && (
+          <HomeworkSolverView
+            user={user}
+            onNavigateToNotes={() => setActiveView('notes')}
+            onNavigateToExam={() => setActiveView('create')}
           />
         )}
 

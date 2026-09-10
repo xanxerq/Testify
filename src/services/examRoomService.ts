@@ -19,6 +19,22 @@ const LOCAL_STORAGE_KEY_ROOMS = 'testify_local_exam_rooms';
 // Active Realtime channels cache for Supabase
 const activeSupabaseChannels = new Map<string, any>();
 
+// Helper to prevent hanging promises if remote network/database is slow or unreachable
+async function withTimeout<T>(promise: PromiseLike<T> | Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms);
+  });
+  try {
+    const result = await Promise.race([Promise.resolve(promise), timeoutPromise]);
+    clearTimeout(timer);
+    return result;
+  } catch (e) {
+    clearTimeout(timer);
+    return fallback;
+  }
+}
+
 // Generate a random 6-character alphanumeric room PIN (no ambiguous chars like 0/O, 1/I)
 function generateRoomCode(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -123,19 +139,23 @@ export const examRoomService = {
       },
     };
 
-    // 1. Try Supabase first (primary database & realtime engine)
+    // 1. Try Supabase first (primary database & realtime engine) with timeout
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('exam_rooms').upsert({
-          id: roomId,
-          code: code.toUpperCase(),
-          host_id: host.id,
-          host_name: host.name,
-          status: 'waiting',
-          created_at: room.createdAt,
-          exam: room.exam,
-          participants: room.participants,
-        });
+        await withTimeout(
+          supabase.from('exam_rooms').upsert({
+            id: roomId,
+            code: code.toUpperCase(),
+            host_id: host.id,
+            host_name: host.name,
+            status: 'waiting',
+            created_at: room.createdAt,
+            exam: room.exam,
+            participants: room.participants,
+          }),
+          2500,
+          null
+        );
       } catch (sbErr) {
         console.warn('Supabase upsert room error (will use Realtime & Local):', sbErr);
       }
@@ -147,7 +167,7 @@ export const examRoomService = {
     // 3. Fallback / replica to Firestore if available
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
-      await setDoc(roomRef, room);
+      await withTimeout(setDoc(roomRef, room), 2000, null);
     } catch (err) {
       // Ignored if Firestore is not in use
     }
@@ -162,17 +182,27 @@ export const examRoomService = {
   async getRoomByCode(code: string): Promise<ExamRoom | null> {
     const upperCode = code.trim().toUpperCase();
 
-    // 1. Try Supabase first
+    // 0. Check local cache first for instant resolution (no waiting!)
+    const localRooms = getLocalRooms();
+    const local = Object.values(localRooms).find(
+      (r) => r.code && r.code.toUpperCase() === upperCode
+    );
+    if (local) {
+      return local;
+    }
+
+    // 1. Try Supabase first with a strict 2.5s timeout
     if (isSupabaseConfigured()) {
       try {
-        const { data, error } = await supabase
+        const queryPromise = supabase
           .from('exam_rooms')
           .select('*')
           .eq('code', upperCode)
           .maybeSingle();
 
-        if (data && !error) {
-          const room = mapSupabaseRowToRoom(data);
+        const res: any = await withTimeout<any>(queryPromise, 2500, null);
+        if (res?.data) {
+          const room = mapSupabaseRowToRoom(res.data);
           saveLocalRoom(room);
           return room;
         }
@@ -181,14 +211,14 @@ export const examRoomService = {
       }
     }
 
-    // 2. Try Firestore query
+    // 2. Try Firestore query with a strict 2.5s timeout
     try {
       const q = query(
         collection(db, ROOMS_COLLECTION),
         where('code', '==', upperCode)
       );
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
+      const snapshot = await withTimeout<any>(getDocs(q), 2500, null);
+      if (snapshot && !snapshot.empty) {
         const room = snapshot.docs[0].data() as ExamRoom;
         saveLocalRoom(room);
         return room;
@@ -197,27 +227,33 @@ export const examRoomService = {
       // Firestore fallback
     }
 
-    // 3. Fallback to local storage
-    const localRooms = getLocalRooms();
-    const local = Object.values(localRooms).find(
-      (r) => r.code.toUpperCase() === upperCode
+    // Re-check local rooms in case of background sync
+    const finalLocalRooms = getLocalRooms();
+    const finalLocal = Object.values(finalLocalRooms).find(
+      (r) => r.code && r.code.toUpperCase() === upperCode
     );
-    return local || null;
+    return finalLocal || null;
   },
 
   // Get room by ID
   async getRoom(roomId: string): Promise<ExamRoom | null> {
-    // 1. Try Supabase first
+    // 0. Check local cache first
+    const localRooms = getLocalRooms();
+    if (localRooms[roomId]) {
+      return localRooms[roomId];
+    }
+
+    // 1. Try Supabase first with timeout
     if (isSupabaseConfigured()) {
       try {
-        const { data, error } = await supabase
-          .from('exam_rooms')
-          .select('*')
-          .eq('id', roomId)
-          .maybeSingle();
+        const res: any = await withTimeout<any>(
+          supabase.from('exam_rooms').select('*').eq('id', roomId).maybeSingle(),
+          2500,
+          null
+        );
 
-        if (data && !error) {
-          const room = mapSupabaseRowToRoom(data);
+        if (res?.data) {
+          const room = mapSupabaseRowToRoom(res.data);
           saveLocalRoom(room);
           return room;
         }
@@ -226,11 +262,11 @@ export const examRoomService = {
       }
     }
 
-    // 2. Try Firestore
+    // 2. Try Firestore with timeout
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
-      const snap = await getDoc(roomRef);
-      if (snap.exists()) {
+      const snap = await withTimeout(getDoc(roomRef), 2500, null as any);
+      if (snap && snap.exists()) {
         const room = snap.data() as ExamRoom;
         saveLocalRoom(room);
         return room;
@@ -239,8 +275,8 @@ export const examRoomService = {
       // Firestore fallback
     }
 
-    const localRooms = getLocalRooms();
-    return localRooms[roomId] || null;
+    const recheckLocal = getLocalRooms();
+    return recheckLocal[roomId] || null;
   },
 
   async getRoomById(roomId: string): Promise<ExamRoom | null> {
@@ -279,15 +315,19 @@ export const examRoomService = {
       participants: updatedParticipants,
     };
 
-    // 1. Update Supabase
+    // 1. Update Supabase with timeout
     if (isSupabaseConfigured()) {
       try {
-        await supabase
-          .from('exam_rooms')
-          .update({
-            participants: updatedParticipants,
-          })
-          .eq('id', roomId);
+        await withTimeout(
+          supabase
+            .from('exam_rooms')
+            .update({
+              participants: updatedParticipants,
+            })
+            .eq('id', roomId),
+          2000,
+          null
+        );
       } catch (sbErr) {
         console.warn('Supabase update room participants notice:', sbErr);
       }
@@ -299,9 +339,13 @@ export const examRoomService = {
     // 3. Update Firestore if active
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
-      await updateDoc(roomRef, {
-        [`participants.${participant.id}`]: newParticipant,
-      });
+      await withTimeout(
+        updateDoc(roomRef, {
+          [`participants.${participant.id}`]: newParticipant,
+        }),
+        2000,
+        null
+      );
     } catch (err) {
       // Firestore fallback
     }
@@ -322,13 +366,17 @@ export const examRoomService = {
       // 1. Update Supabase
       if (isSupabaseConfigured()) {
         try {
-          await supabase
-            .from('exam_rooms')
-            .update({
-              status: 'in_progress',
-              started_at: startedAt,
-            })
-            .eq('id', roomId);
+          await withTimeout(
+            supabase
+              .from('exam_rooms')
+              .update({
+                status: 'in_progress',
+                started_at: startedAt,
+              })
+              .eq('id', roomId),
+            2000,
+            null
+          );
         } catch (sbErr) {
           console.warn('Supabase startRoom notice:', sbErr);
         }
@@ -341,10 +389,14 @@ export const examRoomService = {
     // 3. Update Firestore
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
-      await updateDoc(roomRef, {
-        status: 'in_progress',
-        startedAt,
-      });
+      await withTimeout(
+        updateDoc(roomRef, {
+          status: 'in_progress',
+          startedAt,
+        }),
+        2000,
+        null
+      );
     } catch (err) {
       // Ignored if Firestore not in use
     }

@@ -1,11 +1,11 @@
 import React from 'react';
-import { BookOpen, Database, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, User as UserIcon, Users } from 'lucide-react';
+import { BookOpen, Database, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, Sparkles, User as UserIcon, Users } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
   user: User | null;
-  activeView: 'create' | 'exam' | 'results' | 'history' | 'notes';
-  onNavigate: (view: 'create' | 'history' | 'notes') => void;
+  activeView: 'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework';
+  onNavigate: (view: 'create' | 'history' | 'notes' | 'homework') => void;
   onOpenAuth: () => void;
   onOpenAdmin: () => void;
   onOpenRoomsModal: () => void;
@@ -75,6 +75,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <BookOpen className="w-4 h-4" />
             <span className="hidden xs:inline">Crear Apuntes</span>
+          </button>
+
+          <button
+            id="nav-btn-homework"
+            onClick={() => onNavigate('homework')}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeView === 'homework'
+                ? 'bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200/50'
+                : 'text-slate-600 hover:text-emerald-700 hover:bg-emerald-50/50'
+            }`}
+            title="Sube una foto de tu ejercicio y la IA te lo resuelve explicando el paso a paso"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-600" />
+            <span className="hidden xs:inline">Resolver Deberes</span>
           </button>
 
           <button

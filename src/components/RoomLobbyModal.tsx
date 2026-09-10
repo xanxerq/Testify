@@ -35,9 +35,7 @@ export const RoomLobbyModal: React.FC<RoomLobbyModalProps> = ({
   initialRoomCode,
   onStartExamInRoom,
 }) => {
-  const [mode, setMode] = useState<'create' | 'join'>(
-    initialRoomCode ? 'join' : examToHost ? 'create' : 'join'
-  );
+  const [mode, setMode] = useState<'create' | 'join'>('join');
   const [roomCodeInput, setRoomCodeInput] = useState<string>(initialRoomCode || '');
   const [participantName, setParticipantName] = useState<string>(
     user?.name || localStorage.getItem('testify_guest_name') || ''
@@ -60,13 +58,19 @@ export const RoomLobbyModal: React.FC<RoomLobbyModalProps> = ({
     }
   }, [user]);
 
-  // If initialRoomCode changed, prefill
+  // Reset modal state when opening
   useEffect(() => {
-    if (initialRoomCode) {
-      setRoomCodeInput(initialRoomCode.toUpperCase());
-      setMode('join');
+    if (isOpen) {
+      setIsLoading(false);
+      setErrorMsg(null);
+      if (initialRoomCode) {
+        setRoomCodeInput(initialRoomCode.toUpperCase());
+        setMode('join');
+      } else if (!currentRoom) {
+        setMode('join');
+      }
     }
-  }, [initialRoomCode]);
+  }, [isOpen, initialRoomCode]);
 
   // Subscribe to room updates once joined or created
   useEffect(() => {
@@ -249,9 +253,22 @@ export const RoomLobbyModal: React.FC<RoomLobbyModalProps> = ({
           {/* If not in a room yet: Select Mode (Create or Join) */}
           {!currentRoom && (
             <div className="space-y-5">
-              {/* Tab Switcher */}
+              {/* Tab Switcher: Join First */}
               <div className="flex p-1 bg-slate-100 rounded-xl">
                 <button
+                  id="tab-room-join"
+                  type="button"
+                  onClick={() => setMode('join')}
+                  className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                    mode === 'join'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Unirse con Código PIN
+                </button>
+                <button
+                  id="tab-room-create"
                   type="button"
                   onClick={() => setMode('create')}
                   disabled={!examToHost}
@@ -262,17 +279,6 @@ export const RoomLobbyModal: React.FC<RoomLobbyModalProps> = ({
                   } ${!examToHost ? 'opacity-40 cursor-not-allowed' : ''}`}
                 >
                   Crear Nueva Sala
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode('join')}
-                  className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
-                    mode === 'join'
-                      ? 'bg-white text-indigo-700 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Unirse con Código PIN
                 </button>
               </div>
 
@@ -290,6 +296,48 @@ export const RoomLobbyModal: React.FC<RoomLobbyModalProps> = ({
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
+
+              {mode === 'join' && (
+                <form onSubmit={handleJoinRoom} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Código PIN de la sala (6 caracteres):
+                    </label>
+                    <input
+                      id="input-room-pin-code"
+                      type="text"
+                      maxLength={8}
+                      autoFocus
+                      value={roomCodeInput}
+                      onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                      placeholder="Ej: ABC742"
+                      className="w-full px-3.5 py-3.5 bg-indigo-50/40 border-2 border-indigo-200 rounded-2xl text-center text-2xl font-black tracking-widest text-indigo-950 uppercase font-mono focus:outline-hidden focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 transition-all"
+                    />
+                    <p className="text-[11px] text-slate-500 text-center mt-1.5">
+                      Pega o escribe el código que te ha compartido tu amigo
+                    </p>
+                  </div>
+
+                  <button
+                    id="btn-confirm-join-room"
+                    type="submit"
+                    disabled={isLoading || !roomCodeInput.trim()}
+                    className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Hourglass className="w-4 h-4 animate-spin" />
+                        <span>Buscando sala...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Entrar a la Sala</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
 
               {mode === 'create' && (
                 <div className="space-y-4">
@@ -315,7 +363,7 @@ export const RoomLobbyModal: React.FC<RoomLobbyModalProps> = ({
                     type="button"
                     disabled={isLoading || !examToHost}
                     onClick={handleCreateRoom}
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isLoading ? (
                       <Hourglass className="w-4 h-4 animate-spin" />
@@ -327,40 +375,6 @@ export const RoomLobbyModal: React.FC<RoomLobbyModalProps> = ({
                     )}
                   </button>
                 </div>
-              )}
-
-              {mode === 'join' && (
-                <form onSubmit={handleJoinRoom} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Código PIN de la sala (6 caracteres):
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={8}
-                      value={roomCodeInput}
-                      onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-                      placeholder="Ej: ABC742"
-                      className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-lg font-black tracking-widest text-indigo-950 uppercase font-mono focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-
-                  <button
-                    id="btn-confirm-join-room"
-                    type="submit"
-                    disabled={isLoading || !roomCodeInput.trim()}
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    {isLoading ? (
-                      <Hourglass className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <span>Unirse a la Sala</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                </form>
               )}
             </div>
           )}

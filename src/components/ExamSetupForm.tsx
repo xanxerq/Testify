@@ -32,6 +32,7 @@ interface ExamSetupFormProps {
   initialConfig?: Partial<ExamSetupConfig> | null;
   initialMaterials?: UploadedMaterial[] | null;
   onOpenJoinRoom?: () => void;
+  onNavigateToHomework?: () => void;
 }
 
 const EDUCATIONAL_LEVELS: { level: EducationalLevel; label: string; desc: string }[] = [
@@ -51,6 +52,7 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
   initialConfig,
   initialMaterials,
   onOpenJoinRoom,
+  onNavigateToHomework,
 }) => {
   // Form state
   const [subject, setSubject] = useState(initialConfig?.subject || '');
@@ -262,6 +264,23 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
           <strong className="font-semibold text-slate-900">PDF</strong>, indica la materia, tema y
           nivel, y la IA generará un examen con preguntas tipo test y de desarrollo.
         </p>
+
+        {/* Quick Shortcut to Homework Solver */}
+        {onNavigateToHomework && (
+          <div className="mt-4 inline-flex flex-wrap items-center justify-center gap-2 p-1.5 sm:p-2 pr-3 sm:pr-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 text-xs sm:text-sm text-emerald-950 shadow-xs">
+            <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white font-extrabold text-[11px] uppercase tracking-wide">
+              Nuevo
+            </span>
+            <span>¿Tienes ejercicios o deberes difíciles? Sube su foto y te lo resuelve paso a paso.</span>
+            <button
+              type="button"
+              onClick={onNavigateToHomework}
+              className="font-bold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 flex items-center gap-0.5 transition-colors ml-1"
+            >
+              <span>Ir a Resolver Deberes →</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Error alert */}
@@ -792,28 +811,26 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
             <button
               id="btn-generate-exam-multiplayer"
               type="button"
-              onClick={(e) => handleSubmit(e, true)}
-              disabled={isLoading}
-              className="w-full py-4 px-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-indigo-950 hover:to-slate-900 text-white font-extrabold rounded-2xl shadow-lg border border-indigo-500/40 transition-all transform active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2.5 text-sm sm:text-base cursor-pointer"
+              onClick={onOpenJoinRoom}
+              className="w-full py-4 px-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-indigo-950 hover:to-slate-900 text-white font-extrabold rounded-2xl shadow-lg border border-indigo-500/40 transition-all transform active:scale-[0.99] flex items-center justify-center gap-2.5 text-sm sm:text-base cursor-pointer"
             >
               <Users className="w-4 h-4 text-amber-400" />
-              <span>Hacer con Amigos (Crear Sala)</span>
+              <span>Hacer con Amigos (Poner Código PIN)</span>
             </button>
           </div>
 
-          {onOpenJoinRoom && (
-            <div className="text-center pt-1">
-              <button
-                id="btn-link-join-room"
-                type="button"
-                onClick={onOpenJoinRoom}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>¿Tienes un código PIN de un amigo? Haz clic aquí para unirte a su sala</span>
-              </button>
-            </div>
-          )}
+          <div className="text-center pt-1 flex flex-wrap items-center justify-center gap-4 text-xs text-slate-500">
+            <button
+              id="btn-link-host-room"
+              type="button"
+              onClick={(e) => handleSubmit(e, true)}
+              disabled={isLoading}
+              className="inline-flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>¿Quieres ser el anfitrión? Crear sala generando este temario</span>
+            </button>
+          </div>
 
           <p className="text-center text-xs text-slate-500 pt-1">
             Al terminar el examen, podrás descargar un informe PDF completo con todas las correcciones y notas finales.

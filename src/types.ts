@@ -194,4 +194,39 @@ export interface ExamRoom {
   participants: Record<string, RoomParticipant>;
 }
 
+export interface HomeworkStep {
+  stepNumber: number;
+  title: string;
+  explanation: string;
+  formulaOrMath?: string;
+  tip?: string;
+}
+
+export interface HomeworkSolution {
+  id: string;
+  userId?: string;
+  createdAt: string;
+  subject?: string;
+  topic?: string;
+  level?: EducationalLevel;
+  exerciseText: string;
+  finalAnswer: string;
+  steps: HomeworkStep[];
+  keyConcepts: string[];
+  commonMistakes: string[];
+  similarPractice?: {
+    question: string;
+    answer: string;
+    explanation: string;
+  };
+  exerciseImageUrl?: string;
+  additionalNotes?: string;
+}
+
+export interface HomeworkSolveConfig {
+  subject?: string;
+  level?: EducationalLevel;
+  specificDoubt?: string;
+}
+
 
