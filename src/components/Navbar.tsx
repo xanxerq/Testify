@@ -4,8 +4,8 @@ import { User } from '../types';
 
 interface NavbarProps {
   user: User | null;
-  activeView: 'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework';
-  onNavigate: (view: 'create' | 'history' | 'notes' | 'homework') => void;
+  activeView: 'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards';
+  onNavigate: (view: 'create' | 'history' | 'notes' | 'homework' | 'flashcards') => void;
   onOpenAuth: () => void;
   onOpenAdmin: () => void;
   onOpenRoomsModal: () => void;
@@ -75,6 +75,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <BookOpen className="w-4 h-4" />
             <span className="hidden xs:inline">Crear Apuntes</span>
+          </button>
+
+          <button
+            id="nav-btn-flashcards"
+            onClick={() => onNavigate('flashcards')}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeView === 'flashcards'
+                ? 'bg-amber-50 text-amber-900 font-semibold border border-amber-200'
+                : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50/50'
+            }`}
+            title="Estudia conceptos con tarjetas de memoria interactivas"
+          >
+            <Sparkles className="w-4 h-4 text-amber-600" />
+            <span className="hidden xs:inline">Flashcards</span>
           </button>
 
           <button

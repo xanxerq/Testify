@@ -4,6 +4,8 @@ import {
   Exam,
   ExamDifficulty,
   ExamSetupConfig,
+  Flashcard,
+  FlashcardDeck,
   HomeworkSolution,
   HomeworkSolveConfig,
   HomeworkStep,
@@ -308,8 +310,28 @@ export const geminiService = {
       }
     }
 
-    const systemPrompt = `Eres un profesor experto y pedagogo de alto nivel encargado de diseñar exámenes formales y didácticos.
-Tu objetivo es generar un examen riguroso, equilibrado y perfectamente adaptado al nivel educativo y al temario proporcionado por el alumno.
+    // Directrices curriculares oficiales de España (LOMLOE y PAU / EBAU)
+    const isPauLevel = level === 'Preparación PAU / EBAU' || topic.toLowerCase().includes('pau') || topic.toLowerCase().includes('ebau') || subject.toLowerCase().includes('pau');
+    const isSpanishSchoolSystem = isPauLevel || level === 'Secundaria (ESO)' || level === 'Bachillerato';
+
+    const spanishCurricularGuidelines = `
+MARCO CURRICULAR Y EVALUACIÓN OFICIAL DE ESPAÑA (LOMLOE & PAU / EBAU):
+- Marco normativo: Currículo LOMLOE (Educación Secundaria Obligatoria y Bachillerato) y modelo de Pruebas de Acceso a la Universidad (PAU / EBAU / Selectividad en España, RD 534/2024).
+- Principio competencial: Enfoque reflexivo, contextualizado y analítico. Las preguntas no deben limitarse a la memorización mecánica, sino evaluar la deducción, el análisis de fuentes, la resolución de problemas y la aplicación práctica de los saberes básicos.
+${isPauLevel ? `
+DIRECTRICES ESPECÍFICAS MODELO PAU / EBAU:
+- Historia de España: Plantea preguntas contextualizadas con análisis de fuentes primarias o textos historiográficos (manifiestos, constituciones, tratados), cronología y consecuencias históricas.
+- Matemáticas II y Aplicadas a las CCSS: Problemas formales con enunciados reales (discusión de sistemas dependientes de parámetros por Rouché-Frobenius, geometría métrica en R³, problemas de optimización con cálculo diferencial, integrales y regla de Barrow, o probabilidad condicionada con Teorema de Bayes e inferencia estadística). Rúbrica desglosada por pasos puntuables.
+- Lengua Castellana y Literatura: Comprensión y comentario crítico de textos de opinión periodísticos, análisis sintáctico según la Nueva Gramática de la Lengua Española (NGLE) de la RAE, formación de palabras y cuestiones de la literatura española prescrita.
+- Física y Química: Problemas de ciencias con datos numéricos explícitos, deducción analítica de leyes y expresión obligatoria del resultado con unidades del Sistema Internacional (S.I.). En Química: equilibrios químicos (Kc, Kp), pH e hidrólisis, y balance redox por el método del ión-electrón. En Física: gravitación, ondas, electromagnetismo y cuántica/nuclear.
+- Biología: Preguntas competenciales basadas en esquemas celulares, rutas metabólicas, problemas de genética mendeliana o inmunología aplicada y vacunas.
+- Geografía: Comentario de prácticas geográficas (climogramas, mapas del tiempo, pirámides de población) y definiciones rigurosas del glosario de términos oficiales.
+- Historia de la Filosofía: Comentario de texto con definición de términos clave del autor, análisis argumentativo y contextualización doctrinal.
+- Inglés: Reading comprehension con evidencia textual explícita, rephrasing de oraciones (B2) y redacción guiada de opinión.` : ''}
+`;
+
+    const systemPrompt = `Eres un profesor experto y miembro de comisiones evaluadoras del sistema educativo de España (LOMLOE y PAU / EBAU).
+Tu objetivo es generar un examen riguroso, pedagógico y perfectamente adaptado a los criterios curriculares oficiales de España, al nivel educativo y al temario proporcionado por el alumno.
 Idioma obligatorio: Español.
 
 Parámetros del examen:
@@ -319,14 +341,16 @@ Parámetros del examen:
 - Dificultad: "${difficulty}"
 - Cantidad de preguntas tipo test (opción múltiple): exactamente ${testCount}
 - Cantidad de preguntas normales / abiertas (desarrollo / razonamiento): exactamente ${openCount}
-${additionalNotes ? `- Indicaciones especiales del alumno: "${additionalNotes}"` : ''}
+${additionalNotes ? `- Indicaciones especiales del alumno / profesor: "${additionalNotes}"` : ''}
 
-CRITERIOS FUNDAMENTALES:
+${isSpanishSchoolSystem ? spanishCurricularGuidelines : ''}
+
+CRITERIOS FUNDAMENTALES DE REDACCIÓN:
 1. Si se han adjuntado fotos o documentos de temario, básate estricta y fielmente en los conceptos, fórmulas, hechos o definiciones que aparecen en ese material.
-2. Cada pregunta tipo test debe tener exactamente 4 opciones de respuesta (índices 0, 1, 2, 3), sólo una correcta, distractores plausibles y pedagógicos, y una explicación clara de por qué la respuesta correcta lo es.
-3. Cada pregunta abierta debe requerir análisis, explicación de conceptos o desarrollo según el nivel educativo indicado. Incluye una respuesta modelo esperada (sampleAnswer) y los criterios clave de evaluación (gradingCriteria) que el profesor buscará al calificar.
-4. Asigna puntos equilibrados (1 punto por cada tipo test, 2 o 3 puntos por cada abierta).
-5. Adapta la complejidad del vocabulario y rigor al nivel "${level}".`;
+2. Cada pregunta tipo test debe tener exactamente 4 opciones de respuesta (índices 0, 1, 2, 3), sólo una correcta, distractores pedagógicos verosímiles que reflejen los errores conceptuales más frecuentes de los estudiantes en España, y una explicación docente detallada de por qué la respuesta correcta lo es.
+3. Cada pregunta abierta debe requerir análisis, desarrollo formal o resolución paso a paso según los estándares curriculares de LOMLOE o PAU. Incluye una respuesta modelo ejemplar (sampleAnswer) y los criterios clave de evaluación (gradingCriteria) desglosados como una rúbrica oficial de corrección para el estudiante.
+4. Asigna puntos equilibrados (1 punto por cada tipo test, 2 o 3 puntos por cada abierta según su grado de desarrollo).
+5. Adapta la complejidad del vocabulario y rigor formal al nivel "${level}".`;
 
     const userPromptText = `Por favor, analiza el temario adjunto y los parámetros solicitados para generar el examen completo en formato JSON con la siguiente estructura:
 {
@@ -1061,5 +1085,193 @@ Instrucciones para el tutor:
       }
       throw new Error(formatGeminiErrorMessage(err));
     }
+  },
+
+  /**
+   * Convierte directamente un examen existente en un mazo de tarjetas Flashcards
+   */
+  convertExamToFlashcards(exam: Exam): FlashcardDeck {
+    const cards: Flashcard[] = (exam.questions || []).map((q, idx) => {
+      if (q.type === 'multiple_choice') {
+        const letter = String.fromCharCode(65 + q.correctOptionIndex);
+        const correctText = q.options[q.correctOptionIndex] || '';
+        return {
+          id: `card_${q.id || idx + 1}`,
+          front: q.questionText,
+          back: `Respuesta correcta: ${letter}) ${correctText}\n\n${q.explanation || ''}`,
+          hint: `Opciones disponibles: ${q.options.map((o, i) => `${String.fromCharCode(65 + i)}) ${o}`).join(' • ')}`,
+          category: 'Pregunta Tipo Test',
+          points: q.points || 1,
+        };
+      } else {
+        return {
+          id: `card_${q.id || idx + 1}`,
+          front: q.questionText,
+          back: `Respuesta modelo:\n${q.sampleAnswer || ''}${
+            Array.isArray(q.gradingCriteria) && q.gradingCriteria.length > 0
+              ? `\n\nPuntos clave:\n${q.gradingCriteria.map((c) => `• ${c}`).join('\n')}`
+              : ''
+          }`,
+          hint: q.hint || undefined,
+          category: 'Pregunta de Desarrollo',
+          points: q.points || 2,
+        };
+      }
+    });
+
+    return {
+      id: `deck_${Date.now()}`,
+      title: `Tarjetas: ${exam.subject} - ${exam.topic}`,
+      subject: exam.subject,
+      topic: exam.topic,
+      level: exam.level,
+      cards,
+      createdAt: new Date().toISOString(),
+    };
+  },
+
+  /**
+   * Genera un mazo de tarjetas de estudio interactivas con IA a partir de temario o fotos
+   */
+  async generateFlashcards(
+    subject: string,
+    topic: string,
+    level: EducationalLevel = 'Bachillerato',
+    materials: UploadedMaterial[] = [],
+    count = 8,
+    additionalInstructions = ''
+  ): Promise<FlashcardDeck> {
+    const contents: any[] = [];
+
+    if (Array.isArray(materials) && materials.length > 0) {
+      for (const mat of materials) {
+        if (!mat) continue;
+        if (mat.type === 'text' || mat.mimeType === 'text/plain') {
+          let textBody = '';
+          if (mat.base64Data) {
+            try {
+              textBody = atob(mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim());
+            } catch {
+              textBody = mat.base64Data;
+            }
+          }
+          if (textBody && textBody.trim()) {
+            contents.push({
+              text: `[Material de temario adjunto - ${mat.name || 'Temario'}]:\n${textBody.trim()}`,
+            });
+          }
+          continue;
+        }
+
+        if (mat.base64Data) {
+          const cleanBase64 = mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim();
+          if (cleanBase64) {
+            contents.push({
+              inlineData: {
+                mimeType: mat.mimeType || 'image/jpeg',
+                data: cleanBase64,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    const systemPrompt = `Eres un pedagogo experto en técnicas de estudio activo, memoria espaciada (Spaced Repetition) y diseño de tarjetas didácticas (Flashcards).
+Tu objetivo es generar exactamente ${count} tarjetas de memoria interactivas de alto rendimiento para el tema "${topic}" de la asignatura "${subject}" (Nivel: "${level}").
+Idioma obligatorio: Español.
+
+Criterios para las tarjetas:
+1. El anverso ("front") debe ser una pregunta directa, una incógnita clave, un concepto a definir o una fórmula por deducir que desafíe la memoria del estudiante.
+2. El reverso ("back") debe contener la respuesta clara, estructurada, sintética y fácil de asimilar.
+3. Incluye una categoría ("category") como: "Concepto Clave", "Fórmula", "Definición", "Causa-Efecto" o "Dato Clave".
+4. Incluye una pista opcional ("hint") para desbloquear el recuerdo.
+${additionalInstructions ? `Instrucciones adicionales del alumno: "${additionalInstructions}"` : ''}`;
+
+    const userPromptText = `Por favor, genera ${count} tarjetas de memoria en formato JSON con la siguiente estructura:
+{
+  "title": "Tarjetas de Repaso: ${subject} - ${topic}",
+  "cards": [
+    {
+      "front": "¿Cuál es la función principal de X y dónde ocurre?",
+      "back": "Respuesta clara y precisa explicando el mecanismo.",
+      "hint": "Recuerda la relación con Y.",
+      "category": "Concepto Clave"
+    }
+  ]
+}
+Devuelve únicamente el objeto JSON válido.`;
+
+    contents.push({ text: userPromptText });
+
+    let responseText = '';
+
+    try {
+      const ai = getGeminiClient();
+      const response = await generateContentWithFallback(ai, {
+        primaryModel: GEMINI_TEXT_MODEL,
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: 'application/json',
+          temperature: 0.3,
+          maxOutputTokens: 4096,
+        },
+      });
+      responseText = response.text || '';
+      if (!responseText.trim()) throw new Error('La IA no devolvió contenido para las tarjetas.');
+    } catch (primaryErr: any) {
+      console.warn('[Gemini] Fallo en la generación de tarjetas con Gemini:', primaryErr?.message || primaryErr);
+      const fallbackKey = getFallbackApiKey();
+      if (fallbackKey) {
+        console.log('[Fallback] Activando proveedor alternativo para tarjetas...');
+        try {
+          responseText = await executeFallbackGeneration({
+            apiKey: fallbackKey,
+            systemPrompt,
+            userPromptText,
+            materials,
+          });
+        } catch (fallbackErr: any) {
+          throw new Error(`Fallo en Gemini y en proveedor de respaldo: ${fallbackErr.message || fallbackErr}`);
+        }
+      } else {
+        throw new Error(formatGeminiErrorMessage(primaryErr));
+      }
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(responseText);
+    } catch {
+      const match = responseText.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+      else throw new Error('No se pudo decodificar el formato JSON de las tarjetas.');
+    }
+
+    const cards: Flashcard[] = (parsed.cards || []).map((c: any, idx: number) => ({
+      id: `fc_${Date.now()}_${idx + 1}`,
+      front: c.front || `Pregunta o concepto ${idx + 1}`,
+      back: c.back || 'Respuesta y explicación.',
+      hint: c.hint || undefined,
+      category: c.category || 'Concepto Clave',
+    }));
+
+    return {
+      id: `deck_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      title: parsed.title || `Tarjetas: ${subject} - ${topic}`,
+      subject,
+      topic,
+      level,
+      cards: cards.length > 0 ? cards : [
+        {
+          id: `fc_1`,
+          front: `Concepto principal de ${topic}`,
+          back: `Revisa los apuntes y materiales de ${subject}.`,
+          category: 'General',
+        }
+      ],
+      createdAt: new Date().toISOString(),
+    };
   },
 };

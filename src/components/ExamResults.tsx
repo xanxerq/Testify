@@ -18,7 +18,7 @@ import {
   XCircle,
   Users,
 } from 'lucide-react';
-import { ExamResult, MultipleChoiceQuestion, OpenQuestion } from '../types';
+import { Exam, ExamResult, MultipleChoiceQuestion, OpenQuestion } from '../types';
 import { RoomLeaderboard } from './RoomLeaderboard';
 import { exportExamResultToPdf } from '../utils/pdfExport';
 
@@ -29,6 +29,7 @@ interface ExamResultsProps {
   roomId?: string | null;
   roomCode?: string | null;
   currentParticipantId?: string | null;
+  onStudyFlashcards?: (exam: Exam) => void;
 }
 
 export const ExamResults: React.FC<ExamResultsProps> = ({
@@ -38,6 +39,7 @@ export const ExamResults: React.FC<ExamResultsProps> = ({
   roomId,
   roomCode,
   currentParticipantId,
+  onStudyFlashcards,
 }) => {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfSuccess, setPdfSuccess] = useState(false);
@@ -236,6 +238,18 @@ export const ExamResults: React.FC<ExamResultsProps> = ({
                   : 'Descargar PDF (con corrección y nota)'}
               </span>
             </button>
+
+            {onStudyFlashcards && (
+              <button
+                type="button"
+                onClick={() => onStudyFlashcards(result.examData)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-xs cursor-pointer"
+                title="Estudiar las preguntas y respuestas de este examen con tarjetas interactivas de memoria"
+              >
+                <Sparkles className="w-4 h-4 text-amber-600" />
+                <span>Repasar con Flashcards</span>
+              </button>
+            )}
 
             <button
               id="btn-print-exam"

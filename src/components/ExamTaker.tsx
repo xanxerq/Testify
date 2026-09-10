@@ -6,14 +6,19 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Download,
+  FileCheck,
   FileQuestion,
   HelpCircle,
   Lightbulb,
+  Printer,
   Send,
+  Sparkles,
   Users,
   Trophy,
 } from 'lucide-react';
 import { Exam, ExamQuestion, MultipleChoiceQuestion, OpenQuestion } from '../types';
+import { exportExamToPrintablePdf } from '../utils/pdfExport';
 
 interface ExamTakerProps {
   exam: Exam;
@@ -22,6 +27,7 @@ interface ExamTakerProps {
   isGrading: boolean;
   roomCode?: string | null;
   onOpenFriendInvite?: () => void;
+  onStudyFlashcards?: (exam: Exam) => void;
 }
 
 export const ExamTaker: React.FC<ExamTakerProps> = ({
@@ -31,11 +37,14 @@ export const ExamTaker: React.FC<ExamTakerProps> = ({
   isGrading,
   roomCode,
   onOpenFriendInvite,
+  onStudyFlashcards,
 }) => {
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
   const [showHint, setShowHint] = useState<boolean>(false);
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
+  const [showPdfModal, setShowPdfModal] = useState<boolean>(false);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
 
   // Timer state
   const totalSeconds = (exam.timeLimitMinutes || 20) * 60;
@@ -102,6 +111,18 @@ export const ExamTaker: React.FC<ExamTakerProps> = ({
 
   const isLowTime = isTimerRunning && secondsRemaining <= 180; // 3 mins or less
 
+  const handleExportPdf = (includeSolutions: boolean) => {
+    setIsExportingPdf(true);
+    try {
+      exportExamToPrintablePdf(exam, includeSolutions);
+      setShowPdfModal(false);
+    } catch (err) {
+      console.error('Error generando PDF:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-8 animate-fadeIn">
       {/* Multiplayer Room Notification Banner */}
@@ -152,20 +173,45 @@ export const ExamTaker: React.FC<ExamTakerProps> = ({
           </h1>
         </div>
 
-        {/* Timer & Submit controls */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+        {/* Timer & Secondary actions & Submit controls */}
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end flex-wrap">
           {exam.timeLimitMinutes && exam.timeLimitMinutes > 0 ? (
             <div
-              className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-sm font-mono font-bold transition-colors ${
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-mono font-bold transition-colors ${
                 isLowTime
                   ? 'bg-rose-50 border-rose-200 text-rose-700 animate-pulse'
                   : 'bg-slate-50 border-slate-200 text-slate-800'
               }`}
             >
-              <Clock className={`w-4 h-4 ${isLowTime ? 'text-rose-600' : 'text-slate-500'}`} />
+              <Clock className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isLowTime ? 'text-rose-600' : 'text-slate-500'}`} />
               <span>{formatTime(secondsRemaining)}</span>
             </div>
           ) : null}
+
+          {/* Flashcards Study Button */}
+          {onStudyFlashcards && (
+            <button
+              type="button"
+              onClick={() => onStudyFlashcards(exam)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 text-xs font-bold rounded-xl transition-all shadow-xs"
+              title="Estudia las preguntas de este examen como tarjetas didácticas interactivas"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+              <span className="hidden xs:inline">Modo Flashcards</span>
+            </button>
+          )}
+
+          {/* Export to PDF Button */}
+          <button
+            id="btn-download-exam-pdf"
+            type="button"
+            onClick={() => setShowPdfModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl shadow-xs transition-all"
+            title="Descargar examen maquetado en PDF para imprimir o compartir"
+          >
+            <Download className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Exportar PDF</span>
+          </button>
 
           <button
             id="btn-open-submit-modal"
@@ -434,6 +480,93 @@ export const ExamTaker: React.FC<ExamTakerProps> = ({
                 ) : (
                   'Entregar y corregir'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Export Options Modal */}
+      {showPdfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Download className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                    Exportar Examen a PDF
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Maquetado limpio listo para imprimir en A4 o compartir digitalmente
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPdfModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 my-4">
+              {/* Option 1: Full Exam + Solutions Sheet */}
+              <button
+                type="button"
+                disabled={isExportingPdf}
+                onClick={() => handleExportPdf(true)}
+                className="w-full text-left p-4 rounded-2xl border-2 border-indigo-600/30 bg-indigo-50/40 hover:bg-indigo-50 hover:border-indigo-600 transition-all group flex items-start gap-3.5"
+              >
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                  <FileCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-slate-900 group-hover:text-indigo-950">
+                      Examen Completo + Plantilla de Soluciones
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-extrabold uppercase">
+                      Recomendado
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    Incluye todas las preguntas maquetadas con recuadros y renglones, más una página final con las respuestas correctas, justificaciones pedagógicas y rúbrica para corrección.
+                  </p>
+                </div>
+              </button>
+
+              {/* Option 2: Exam only (no solutions) */}
+              <button
+                type="button"
+                disabled={isExportingPdf}
+                onClick={() => handleExportPdf(false)}
+                className="w-full text-left p-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all group flex items-start gap-3.5"
+              >
+                <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                  <Printer className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-slate-900 group-hover:text-slate-950">
+                    Solo Enunciados (Sin Soluciones)
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Ideal para profesores o estudiantes que deseen imprimir el examen en blanco para repartir en clase o realizar la prueba en papel sin ver las respuestas.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setShowPdfModal(false)}
+                className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Cerrar
               </button>
             </div>
           </div>

@@ -1,7 +1,8 @@
 export type EducationalLevel =
-  | 'Primaria'
   | 'Secundaria (ESO)'
   | 'Bachillerato'
+  | 'Preparación PAU / EBAU'
+  | 'Primaria'
   | 'Formación Profesional'
   | 'Universidad / Grado'
   | 'Máster / Oposiciones';
@@ -227,6 +228,25 @@ export interface HomeworkSolveConfig {
   subject?: string;
   level?: EducationalLevel;
   specificDoubt?: string;
+}
+
+export interface Flashcard {
+  id: string;
+  front: string; // Question or key concept
+  back: string;  // Detailed answer, explanation, formula
+  hint?: string;
+  category?: string;
+  points?: number;
+}
+
+export interface FlashcardDeck {
+  id: string;
+  title: string;
+  subject: string;
+  topic: string;
+  level: EducationalLevel;
+  cards: Flashcard[];
+  createdAt: string;
 }
 
 

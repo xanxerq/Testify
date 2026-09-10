@@ -1,6 +1,6 @@
 {
-  "name": "Testify - Crea y Practica Exámenes con IA",
-  "description": "Testify es la plataforma de inteligencia artificial para crear y practicar exámenes personalizados, generar apuntes, resolver deberes paso a paso con foto y competir en salas de estudio con amigos.",
+  "name": "Testify - Exámenes con IA para LOMLOE, ESO, Bachillerato y PAU",
+  "description": "Generador de exámenes con IA adaptado al currículo LOMLOE y pruebas PAU / EBAU en España. Practica con materias oficiales de ESO, Bachillerato y Selectividad con corrección pedagógica inmediata.",
   "requestFramePermissions": [
     "camera"
   ],

@@ -8,12 +8,14 @@ import { ExamResults } from './components/ExamResults';
 import { ExamHistory } from './components/ExamHistory';
 import { StudyNotesView } from './components/StudyNotesView';
 import { HomeworkSolverView } from './components/HomeworkSolverView';
+import { FlashcardsView } from './components/FlashcardsView';
 import { RoomLobbyModal } from './components/RoomLobbyModal';
 import { authService } from './services/authService';
 import { geminiService } from './services/geminiService';
 import { historyService } from './services/historyService';
 import { examRoomService } from './services/examRoomService';
 import {
+  EducationalLevel,
   Exam,
   ExamResult,
   ExamSetupConfig,
@@ -27,9 +29,17 @@ import {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => authService.getCurrentUser());
-  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework'>('create');
+  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards'>('create');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+
+  // Flashcards study mode states
+  const [flashcardsSourceExam, setFlashcardsSourceExam] = useState<Exam | null>(null);
+  const [flashcardsInitialTopic, setFlashcardsInitialTopic] = useState<{
+    subject: string;
+    topic: string;
+    level: EducationalLevel;
+  } | null>(null);
 
   // Multiplayer room states
   const [isRoomLobbyOpen, setIsRoomLobbyOpen] = useState(false);
@@ -323,6 +333,32 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleStudyFlashcardsFromExam = (exam: Exam) => {
+    setFlashcardsSourceExam(exam);
+    setFlashcardsInitialTopic(null);
+    setActiveView('flashcards');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNavigateToFlashcards = (
+    subject?: string,
+    topic?: string,
+    level?: EducationalLevel
+  ) => {
+    setFlashcardsSourceExam(null);
+    if (subject && topic) {
+      setFlashcardsInitialTopic({
+        subject,
+        topic,
+        level: level || 'Secundaria (ESO)',
+      });
+    } else {
+      setFlashcardsInitialTopic(null);
+    }
+    setActiveView('flashcards');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleSignOut = () => {
     authService.signOut();
     setUser(null);
@@ -336,6 +372,7 @@ export default function App() {
         activeView={activeView}
         onNavigate={(view) => {
           if (view === 'create') handleNewExam();
+          else if (view === 'flashcards') handleNavigateToFlashcards();
           else setActiveView(view);
         }}
         onOpenAuth={() => setIsAuthModalOpen(true)}
@@ -362,6 +399,7 @@ export default function App() {
               setIsRoomLobbyOpen(true);
             }}
             onNavigateToHomework={() => setActiveView('homework')}
+            onNavigateToFlashcards={handleNavigateToFlashcards}
           />
         )}
 
@@ -370,6 +408,21 @@ export default function App() {
             user={user}
             onOpenAuthRequired={() => setIsAuthModalOpen(true)}
             onGenerateExamFromNote={handleGenerateExamFromNote}
+          />
+        )}
+
+        {activeView === 'flashcards' && (
+          <FlashcardsView
+            initialExam={flashcardsSourceExam}
+            initialSubject={flashcardsInitialTopic?.subject}
+            initialTopic={flashcardsInitialTopic?.topic}
+            initialLevel={flashcardsInitialTopic?.level}
+            onNavigateToExam={() => {
+              setFlashcardsSourceExam(null);
+              setActiveView('create');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onOpenAuthRequired={() => setIsAuthModalOpen(true)}
           />
         )}
 
@@ -389,6 +442,7 @@ export default function App() {
             isGrading={isGrading}
             roomCode={activeRoomCode}
             onOpenFriendInvite={() => setIsRoomLobbyOpen(true)}
+            onStudyFlashcards={handleStudyFlashcardsFromExam}
           />
         )}
 
@@ -400,6 +454,7 @@ export default function App() {
             roomId={activeRoomId}
             roomCode={activeRoomCode}
             currentParticipantId={activeParticipantId}
+            onStudyFlashcards={handleStudyFlashcardsFromExam}
           />
         )}
 
