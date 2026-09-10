@@ -22,7 +22,7 @@ export interface User {
 export interface UploadedMaterial {
   id: string;
   name: string;
-  type: 'image' | 'pdf';
+  type: 'image' | 'pdf' | 'text';
   mimeType: string;
   base64Data: string; // Base64 without data prefix or with data prefix
   previewUrl?: string;

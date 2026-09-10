@@ -206,11 +206,13 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
     parts.push({ text: userPromptText });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-1.5-flash',
       contents: parts,
       config: {
         systemInstruction: systemPrompt,
         responseMimeType: 'application/json',
+        temperature: 0.3,
+        maxOutputTokens: 8192,
       },
     });
 
@@ -334,10 +336,12 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
 }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-1.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
+        temperature: 0.2,
+        maxOutputTokens: 2048,
       },
     });
 

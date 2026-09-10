@@ -135,7 +135,7 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
     setOpenCount(preset.openCount);
     setAdditionalNotes(preset.sampleNotesText);
 
-    // Create a simulated PDF material from the demo notes
+    // Create a plain text material from the demo notes
     const encoder = new TextEncoder();
     const bytes = encoder.encode(preset.sampleNotesText);
     let binary = '';
@@ -146,9 +146,9 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
 
     const demoDoc: UploadedMaterial = {
       id: `demo_${Date.now()}`,
-      name: `Temario_${preset.name.replace(/\s+/g, '_')}.pdf`,
-      type: 'pdf',
-      mimeType: 'application/pdf',
+      name: `Temario_${preset.name.replace(/\s+/g, '_')}.txt`,
+      type: 'text',
+      mimeType: 'text/plain',
       base64Data: base64Notes,
       sizeBytes: bytes.byteLength,
     };
@@ -161,28 +161,49 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
     e.preventDefault();
     setValidationError(null);
 
-    if (!subject.trim()) {
-      setValidationError('Por favor, indica de qué materia es el examen.');
+    const trimmedSubject = (subject || '').trim();
+    const trimmedTopic = (topic || '').trim();
+    const parsedTestCount = Math.max(0, Number(testCount) || 0);
+    const parsedOpenCount = Math.max(0, Number(openCount) || 0);
+    const totalQuestions = parsedTestCount + parsedOpenCount;
+
+    // Frontend validation: subject must not be empty
+    if (!trimmedSubject) {
+      setValidationError('El campo de la asignatura es obligatorio y no puede estar vacío.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    if (!topic.trim()) {
-      setValidationError('Por favor, escribe qué tema estás estudiando.');
+
+    if (!trimmedTopic) {
+      setValidationError('Por favor, escribe qué tema o unidad didáctica estás estudiando.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+
+    // Frontend validation: total questions must be greater than 0
+    if (totalQuestions <= 0) {
+      setValidationError(
+        'El número total de preguntas debe ser mayor a 0. Configura al menos una pregunta tipo test o de desarrollo antes de enviar la petición.'
+      );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     if (materials.length === 0 && !additionalNotes.trim()) {
       setValidationError(
-        'Debes adjuntar al menos una foto o un PDF de tu temario (o cargar un temario de ejemplo) para que la IA elabore el examen.'
+        'Debes adjuntar al menos una foto o un archivo de tu temario (o cargar un temario de ejemplo) para que la IA elabore el examen.'
       );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
     const config: ExamSetupConfig = {
-      subject: subject.trim(),
-      topic: topic.trim(),
+      subject: trimmedSubject,
+      topic: trimmedTopic,
       level,
       difficulty,
-      testCount,
-      openCount,
+      testCount: parsedTestCount,
+      openCount: parsedOpenCount,
       timed,
       timeLimitMinutes: timed ? timeLimitMinutes : 0,
       additionalNotes: additionalNotes.trim(),
@@ -246,8 +267,11 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Materia */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Materia / Asignatura
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span>Materia / Asignatura <span className="text-rose-500">*</span></span>
+                {!subject.trim() && (
+                  <span className="text-[10px] text-rose-500 font-semibold lowercase">obligatorio</span>
+                )}
               </label>
               <div className="relative">
                 <BookMarked className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
@@ -256,9 +280,16 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
                   type="text"
                   required
                   value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
+                  onChange={(e) => {
+                    setSubject(e.target.value);
+                    if (validationError && e.target.value.trim()) setValidationError(null);
+                  }}
                   placeholder="Ej. Biología Celular, Historia de España, Matemáticas..."
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                  className={`w-full pl-9 pr-3 py-2.5 bg-slate-50 border rounded-xl text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all ${
+                    !subject.trim() && validationError
+                      ? 'border-rose-400 ring-1 ring-rose-300'
+                      : 'border-slate-200'
+                  }`}
                 />
               </div>
 
@@ -269,7 +300,10 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
                   <button
                     key={sub}
                     type="button"
-                    onClick={() => setSubject(sub)}
+                    onClick={() => {
+                      setSubject(sub);
+                      if (validationError) setValidationError(null);
+                    }}
                     className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 transition-colors"
                   >
                     {sub}
@@ -280,8 +314,11 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
 
             {/* Tema */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Tema específico
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span>Tema específico <span className="text-rose-500">*</span></span>
+                {!topic.trim() && (
+                  <span className="text-[10px] text-rose-500 font-semibold lowercase">obligatorio</span>
+                )}
               </label>
               <div className="relative">
                 <Layers className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
@@ -290,9 +327,16 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
                   type="text"
                   required
                   value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
+                  onChange={(e) => {
+                    setTopic(e.target.value);
+                    if (validationError && e.target.value.trim()) setValidationError(null);
+                  }}
                   placeholder="Ej. La Fotosíntesis y la Respiración Celular, Guerra Fría..."
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                  className={`w-full pl-9 pr-3 py-2.5 bg-slate-50 border rounded-xl text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all ${
+                    !topic.trim() && validationError
+                      ? 'border-rose-400 ring-1 ring-rose-300'
+                      : 'border-slate-200'
+                  }`}
                 />
               </div>
               <p className="mt-1.5 text-[11px] text-slate-400">
@@ -549,15 +593,15 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
               <input
                 id="range-test-count"
                 type="range"
-                min={2}
+                min={0}
                 max={15}
                 value={testCount}
-                onChange={(e) => setTestCount(Number(e.target.value))}
+                onChange={(e) => setTestCount(Math.max(0, parseInt(e.target.value, 10) || 0))}
                 className="w-full accent-indigo-600 cursor-pointer"
               />
               <div className="flex justify-between text-[10px] text-slate-400 font-medium">
-                <span>2 preguntas</span>
-                <span>8 recomendadas</span>
+                <span>0 preguntas</span>
+                <span>5 recomendadas</span>
                 <span>15 preguntas</span>
               </div>
             </div>
@@ -578,18 +622,43 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
               <input
                 id="range-open-count"
                 type="range"
-                min={1}
+                min={0}
                 max={5}
                 value={openCount}
-                onChange={(e) => setOpenCount(Number(e.target.value))}
+                onChange={(e) => setOpenCount(Math.max(0, parseInt(e.target.value, 10) || 0))}
                 className="w-full accent-indigo-600 cursor-pointer"
               />
               <div className="flex justify-between text-[10px] text-slate-400 font-medium">
-                <span>1 pregunta</span>
+                <span>0 preguntas</span>
                 <span>2 recomendadas</span>
                 <span>5 preguntas</span>
               </div>
             </div>
+          </div>
+
+          {/* Total Questions Indicator with Validation Alert */}
+          <div
+            className={`p-3.5 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 transition-all ${
+              testCount + openCount > 0
+                ? 'bg-indigo-50/50 border-indigo-200/70 text-indigo-900'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
+            }`}
+          >
+            <div className="flex items-center gap-2 text-xs font-semibold">
+              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>
+                Total de preguntas configuradas:{' '}
+                <strong className="text-sm font-extrabold">
+                  {testCount + openCount}
+                </strong>{' '}
+                ({testCount} tipo test + {openCount} de desarrollo)
+              </span>
+            </div>
+            {testCount + openCount === 0 && (
+              <span className="text-xs font-bold text-rose-700 bg-white/80 px-2.5 py-1 rounded-lg border border-rose-200">
+                ⚠️ Debe haber al menos 1 pregunta en total
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">

@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { Exam, ExamSetupConfig, OpenQuestion, QuestionFeedback, UploadedMaterial } from '../types';
+import { EducationalLevel, Exam, ExamDifficulty, ExamSetupConfig, OpenQuestion, QuestionFeedback, UploadedMaterial } from '../types';
 
 // WARNING: As explicitly requested by the user, Gemini API calls and @google/genai are executed
 // directly in the frontend application using GEMINI_API_KEY / VITE_GEMINI_API_KEY without invoking
@@ -62,33 +62,80 @@ export const geminiService = {
     config: ExamSetupConfig,
     materials: UploadedMaterial[]
   ): Promise<Exam> {
-    const {
-      subject,
-      topic,
-      level,
-      difficulty,
-      testCount = 5,
-      openCount = 2,
-      timeLimitMinutes = 20,
-      additionalNotes = '',
-    } = config;
-
-    if (!subject.trim() || !topic.trim()) {
-      throw new Error('Por favor, indica la materia y el tema del examen.');
+    const subject = (config.subject || '').trim();
+    if (!subject) {
+      throw new Error('El campo de la asignatura es obligatorio y no puede viajar vacío.');
     }
+
+    const topic = (config.topic || '').trim();
+    if (!topic) {
+      throw new Error('El campo del tema específico es obligatorio y no puede estar vacío.');
+    }
+
+    const level: EducationalLevel = config.level || 'Bachillerato';
+    const difficulty: ExamDifficulty = config.difficulty || 'Media';
+    const testCount = Math.max(0, Number(config.testCount) || 0);
+    const openCount = Math.max(0, Number(config.openCount) || 0);
+    const totalQuestions = testCount + openCount;
+
+    if (totalQuestions <= 0) {
+      throw new Error('El número total de preguntas debe ser mayor a 0 (debes incluir al menos una pregunta tipo test o de desarrollo).');
+    }
+
+    const timeLimitMinutes = Math.max(0, Number(config.timeLimitMinutes) || 20);
+    const additionalNotes = (config.additionalNotes || '').trim();
 
     const ai = getGeminiClient();
 
-    // Prepare multimodal parts (images and PDFs)
+    // Prepare multimodal parts (images, PDFs and text)
     const contents: any[] = [];
 
     if (Array.isArray(materials) && materials.length > 0) {
       for (const mat of materials) {
-        if (mat.base64Data && mat.mimeType) {
-          const cleanBase64 = mat.base64Data.replace(/^data:[^;]+;base64,/, '');
+        if (!mat) continue;
+
+        // If it's a text material, pass it as clean text part
+        if (mat.type === 'text' || mat.mimeType === 'text/plain') {
+          let textBody = '';
+          if (mat.base64Data) {
+            try {
+              textBody = atob(mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim());
+            } catch {
+              textBody = mat.base64Data;
+            }
+          }
+          if (textBody && textBody.trim()) {
+            contents.push({
+              text: `[Material de temario adjunto - ${mat.name || 'Temario'}]:\n${textBody.trim()}`,
+            });
+          }
+          continue;
+        }
+
+        if (mat.base64Data) {
+          const cleanBase64 = mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim();
+          if (!cleanBase64) continue;
+
+          let mimeType = (mat.mimeType || 'image/jpeg').toLowerCase();
+
+          // Safety check: if marked as PDF but is actually plaintext data, convert to text part
+          if (mimeType === 'application/pdf' && !cleanBase64.startsWith('JVBERi')) {
+            try {
+              const decoded = atob(cleanBase64);
+              if (decoded && decoded.trim()) {
+                contents.push({
+                  text: `[Material de temario adjunto - ${mat.name || 'Temario'}]:\n${decoded.trim()}`,
+                });
+                continue;
+              }
+            } catch {
+              // Proceed if not plaintext
+            }
+          }
+
           contents.push({
             inlineData: {
-              mimeType: mat.mimeType,
+              mimeType,
               data: cleanBase64,
             },
           });
@@ -110,13 +157,13 @@ Parámetros del examen:
 ${additionalNotes ? `- Indicaciones especiales del alumno: "${additionalNotes}"` : ''}
 
 CRITERIOS FUNDAMENTALES:
-1. Si se han adjuntado fotos o PDF de apuntes/temario, básate estricta y fielmente en los conceptos, fórmulas, hechos o definiciones que aparecen en ese material.
+1. Si se han adjuntado fotos o documentos de temario, básate estricta y fielmente en los conceptos, fórmulas, hechos o definiciones que aparecen en ese material.
 2. Cada pregunta tipo test debe tener exactamente 4 opciones de respuesta (índices 0, 1, 2, 3), sólo una correcta, distractores plausibles y pedagógicos, y una explicación clara de por qué la respuesta correcta lo es.
 3. Cada pregunta abierta debe requerir análisis, explicación de conceptos o desarrollo según el nivel educativo indicado. Incluye una respuesta modelo esperada (sampleAnswer) y los criterios clave de evaluación (gradingCriteria) que el profesor buscará al calificar.
 4. Asigna puntos equilibrados (1 punto por cada tipo test, 2 o 3 puntos por cada abierta).
 5. Adapta la complejidad del vocabulario y rigor al nivel "${level}".`;
 
-    const userPromptText = `Por favor, analiza el temario adjunto (fotos o PDF) y los parámetros solicitados para generar el examen completo en formato JSON con la siguiente estructura:
+    const userPromptText = `Por favor, analiza el temario adjunto y los parámetros solicitados para generar el examen completo en formato JSON con la siguiente estructura:
 {
   "title": "Título descriptivo del examen",
   "overview": "Breve resumen pedagógico del temario evaluado en este examen (2-3 frases)",
@@ -157,12 +204,15 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
     contents.push({ text: userPromptText });
 
     try {
+      // Use gemini-1.5-flash with well-structured generationConfig parameters
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-1.5-flash',
         contents,
         config: {
           systemInstruction: systemPrompt,
           responseMimeType: 'application/json',
+          temperature: 0.3,
+          maxOutputTokens: 8192,
         },
       });
 
@@ -292,10 +342,12 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-1.5-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
+          temperature: 0.2,
+          maxOutputTokens: 2048,
         },
       });
 
