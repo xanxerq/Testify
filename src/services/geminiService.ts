@@ -37,6 +37,9 @@ export const getGeminiApiKey = (): string => {
   return (key || '').trim();
 };
 
+// Use modern supported model as mandated by Google AI Studio Gemini API guidelines
+export const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
+
 let cachedKey = '';
 let aiClient: GoogleGenAI | null = null;
 
@@ -217,9 +220,9 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
     contents.push({ text: userPromptText });
 
     try {
-      // Use gemini-1.5-flash with well-structured generationConfig parameters
+      // Use gemini-3.8-flash with well-structured generationConfig parameters
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: GEMINI_TEXT_MODEL,
         contents,
         config: {
           systemInstruction: systemPrompt,
@@ -427,7 +430,7 @@ Devuelve exclusivamente el objeto JSON válido.`;
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: GEMINI_TEXT_MODEL,
         contents,
         config: {
           systemInstruction: systemPrompt,
@@ -548,7 +551,7 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: GEMINI_TEXT_MODEL,
         contents: prompt,
         config: {
           responseMimeType: 'application/json',

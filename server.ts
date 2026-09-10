@@ -13,6 +13,9 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Supported modern Gemini model
+const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
+
 // Lazy initialize Gemini client to avoid crashes if key is missing during build
 let geminiClient: GoogleGenAI | null = null;
 function getGemini(): GoogleGenAI {
@@ -206,7 +209,7 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
     parts.push({ text: userPromptText });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: GEMINI_TEXT_MODEL,
       contents: parts,
       config: {
         systemInstruction: systemPrompt,
@@ -336,7 +339,7 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
 }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: GEMINI_TEXT_MODEL,
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
