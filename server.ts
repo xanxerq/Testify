@@ -14,23 +14,27 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Supported modern Gemini model
-const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
+const GEMINI_TEXT_MODEL = 'gemini-flash-latest';
 
 function isHighDemandOrTransientError(error: any): boolean {
   if (!error) return false;
   const status = error?.status || error?.code || error?.error?.code || error?.error?.status;
-  const message = (
-    error?.message ||
-    error?.error?.message ||
-    (typeof error === 'string' ? error : '') ||
-    JSON.stringify(error) ||
-    ''
-  ).toLowerCase();
+  let raw = '';
+  try {
+    raw = typeof error === 'string' ? error : (error?.message || '');
+    if (error?.error) {
+      raw += ' ' + (typeof error.error === 'string' ? error.error : JSON.stringify(error.error));
+    }
+  } catch {}
+
+  const message = (raw + ' ' + (error?.statusText || '')).toLowerCase();
 
   return (
     status === 503 ||
+    status === '503' ||
     status === 'UNAVAILABLE' ||
     status === 429 ||
+    status === '429' ||
     status === 'RESOURCE_EXHAUSTED' ||
     message.includes('503') ||
     message.includes('high demand') ||
@@ -38,7 +42,9 @@ function isHighDemandOrTransientError(error: any): boolean {
     message.includes('overloaded') ||
     message.includes('spikes in demand') ||
     message.includes('temporary') ||
-    message.includes('rate limit')
+    message.includes('resource_exhausted') ||
+    message.includes('rate limit') ||
+    message.includes('quota')
   );
 }
 
@@ -54,19 +60,19 @@ async function generateContentWithFallback(
 ) {
   const modelsToTry = [
     params.primaryModel || GEMINI_TEXT_MODEL,
-    'gemini-3.1-flash-lite',
     'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
   ].filter((model, idx, arr) => arr.indexOf(model) === idx);
 
   let lastError: any = null;
 
-  for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
-    const currentModel = modelsToTry[mIdx];
-    const maxAttempts = mIdx === 0 ? 3 : 2;
+  for (let round = 1; round <= 2; round++) {
+    for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+      const currentModel = modelsToTry[mIdx];
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        console.log(`[Server Gemini] Llamando a modelo "${currentModel}" (intento ${attempt}/${maxAttempts})...`);
+        console.log(`[Server Gemini] Llamando a modelo "${currentModel}" (ronda ${round})...`);
         const response = await ai.models.generateContent({
           model: currentModel,
           contents: params.contents,
@@ -78,23 +84,19 @@ async function generateContentWithFallback(
         }
       } catch (err: any) {
         lastError = err;
-        console.warn(`[Server Gemini] Error en ${currentModel} (intento ${attempt}):`, err?.message || err);
+        console.warn(`[Server Gemini] Error en ${currentModel}:`, err?.message || err);
 
         if (isHighDemandOrTransientError(err)) {
-          if (attempt < maxAttempts) {
-            const delay = attempt * 1200 + Math.random() * 400;
-            console.log(`[Server Gemini] 503 detectado. Reintentando en ${Math.round(delay)}ms...`);
-            await sleep(delay);
-            continue;
-          }
-          console.log(`[Server Gemini] Modelo "${currentModel}" saturado. Conmutando a respaldo...`);
-          await sleep(500);
-          break;
+          console.log(`[Server Gemini] Modelo "${currentModel}" saturado (503/429). Conmutando de inmediato a siguiente modelo...`);
+          continue;
         } else {
-          if (attempt === maxAttempts) break;
-          await sleep(600);
+          throw err;
         }
       }
+    }
+
+    if (round < 2) {
+      await sleep(600);
     }
   }
 
@@ -105,6 +107,68 @@ async function generateContentWithFallback(
   }
 
   throw lastError || new Error('No se pudo obtener respuesta de la IA.');
+}
+
+async function callFallbackProviderServer(params: {
+  apiKey: string;
+  systemPrompt: string;
+  userPromptText: string;
+  materials?: any[];
+}): Promise<string> {
+  const apiKey = params.apiKey;
+  const customBaseUrl = process.env.VITE_FALLBACK_BASE_URL || process.env.FALLBACK_BASE_URL;
+  const customModel = process.env.VITE_FALLBACK_MODEL || process.env.FALLBACK_MODEL;
+
+  if (apiKey.startsWith('AIza') && !customBaseUrl) {
+    const ai = new GoogleGenAI({ apiKey });
+    const res = await ai.models.generateContent({
+      model: customModel || 'gemini-flash-latest',
+      contents: [{ text: params.userPromptText }],
+      config: {
+        systemInstruction: params.systemPrompt,
+        responseMimeType: 'application/json',
+        temperature: 0.3,
+      },
+    });
+    return res.text || '';
+  }
+
+  let baseUrl = customBaseUrl || 'https://api.openai.com/v1';
+  let model = customModel || 'gpt-4o-mini';
+
+  if (apiKey.startsWith('sk-or-')) {
+    baseUrl = customBaseUrl || 'https://openrouter.ai/api/v1';
+    model = customModel || 'openai/gpt-4o-mini';
+  } else if (apiKey.startsWith('gsk_')) {
+    baseUrl = customBaseUrl || 'https://api.groq.com/openai/v1';
+    model = customModel || 'llama-3.3-70b-versatile';
+  }
+
+  const endpoint = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: params.systemPrompt },
+        { role: 'user', content: params.userPromptText },
+      ],
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!response.ok) {
+    const errTxt = await response.text();
+    throw new Error(`Fallback HTTP ${response.status}: ${errTxt.substring(0, 200)}`);
+  }
+
+  const data: any = await response.json();
+  return data?.choices?.[0]?.message?.content || '';
 }
 
 // Lazy initialize Gemini client to avoid crashes if key is missing during build
@@ -299,18 +363,34 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
 
     parts.push({ text: userPromptText });
 
-    const response = await generateContentWithFallback(ai, {
-      primaryModel: GEMINI_TEXT_MODEL,
-      contents: parts,
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: 'application/json',
-        temperature: 0.3,
-        maxOutputTokens: 8192,
-      },
-    });
+    let responseText = '';
+    try {
+      const response = await generateContentWithFallback(ai, {
+        primaryModel: GEMINI_TEXT_MODEL,
+        contents: parts,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: 'application/json',
+          temperature: 0.3,
+          maxOutputTokens: 8192,
+        },
+      });
+      responseText = response.text || '';
+    } catch (primaryErr: any) {
+      console.warn('[Server] Fallo en Gemini, verificando clave de respaldo...', primaryErr?.message);
+      const fallbackKey = process.env.VITE_FALLBACK_API_KEY || process.env.FALLBACK_API_KEY;
+      if (fallbackKey) {
+        responseText = await callFallbackProviderServer({
+          apiKey: fallbackKey,
+          systemPrompt,
+          userPromptText,
+          materials,
+        });
+      } else {
+        throw primaryErr;
+      }
+    }
 
-    const responseText = response.text || '';
     let examData;
     try {
       examData = JSON.parse(responseText);
@@ -354,9 +434,17 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
     return res.json({ success: true, exam });
   } catch (err: any) {
     console.error('Error generating exam:', err);
+    let errorMsg = err.message || 'Ocurrió un error inesperado al procesar el temario.';
+    try {
+      const parsed = JSON.parse(errorMsg);
+      if (parsed?.error?.message) errorMsg = parsed.error.message;
+    } catch {}
+    if (isHighDemandOrTransientError(err)) {
+      errorMsg = 'Los servidores de Google Gemini están experimentando una alta demanda momentánea (Error 503). Por favor, intenta de nuevo en unos momentos.';
+    }
     return res.status(500).json({
       error: 'Error al generar el examen con IA',
-      message: err.message || 'Ocurrió un error inesperado al procesar el temario.',
+      message: errorMsg,
     });
   }
 });

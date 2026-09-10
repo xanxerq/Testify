@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Exam, ExamRoom, RoomParticipant, User } from '../types';
 import { examRoomService } from '../services/examRoomService';
+import { isSupabaseConfigured } from '../services/supabase';
 
 interface RoomLobbyModalProps {
   isOpen: boolean;
@@ -209,9 +210,17 @@ export const RoomLobbyModal: React.FC<RoomLobbyModalProps> = ({
               <Users className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base sm:text-lg">
-                {currentRoom ? `Sala de Reto #${currentRoom.code}` : 'Hacer Examen con Amigos'}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base sm:text-lg">
+                  {currentRoom ? `Sala de Reto #${currentRoom.code}` : 'Hacer Examen con Amigos'}
+                </h3>
+                {isSupabaseConfigured() && (
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 text-[10px] font-medium border border-emerald-400/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Supabase Realtime
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-indigo-200">
                 {currentRoom
                   ? 'Conecta a tus amigos y competid para ver quién saca mejor nota'

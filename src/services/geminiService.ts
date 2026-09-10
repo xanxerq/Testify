@@ -13,6 +13,11 @@ import {
   StudyNotesSetupConfig,
   UploadedMaterial,
 } from '../types';
+import {
+  executeFallbackGeneration,
+  getFallbackApiKey,
+  isFallbackConfigured,
+} from './fallbackProviderService';
 
 // WARNING: As explicitly requested by the user, Gemini API calls and @google/genai are executed
 // directly in the frontend application using GEMINI_API_KEY / VITE_GEMINI_API_KEY without invoking
@@ -37,8 +42,8 @@ export const getGeminiApiKey = (): string => {
   return (key || '').trim();
 };
 
-// Use modern supported model as mandated by Google AI Studio Gemini API guidelines
-export const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
+// Use robust, high-availability production Flash model as primary
+export const GEMINI_TEXT_MODEL = 'gemini-flash-latest';
 
 /**
  * Checks if an error corresponds to temporary high demand (HTTP 503 UNAVAILABLE) or rate limiting.
@@ -46,18 +51,22 @@ export const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
 export function isHighDemandOrTransientError(error: any): boolean {
   if (!error) return false;
   const status = error?.status || error?.code || error?.error?.code || error?.error?.status;
-  const message = (
-    error?.message ||
-    error?.error?.message ||
-    (typeof error === 'string' ? error : '') ||
-    JSON.stringify(error) ||
-    ''
-  ).toLowerCase();
+  let raw = '';
+  try {
+    raw = typeof error === 'string' ? error : (error?.message || '');
+    if (error?.error) {
+      raw += ' ' + (typeof error.error === 'string' ? error.error : JSON.stringify(error.error));
+    }
+  } catch {}
+
+  const message = (raw + ' ' + (error?.statusText || '')).toLowerCase();
 
   return (
     status === 503 ||
+    status === '503' ||
     status === 'UNAVAILABLE' ||
     status === 429 ||
+    status === '429' ||
     status === 'RESOURCE_EXHAUSTED' ||
     message.includes('503') ||
     message.includes('high demand') ||
@@ -66,15 +75,57 @@ export function isHighDemandOrTransientError(error: any): boolean {
     message.includes('spikes in demand') ||
     message.includes('temporary') ||
     message.includes('resource_exhausted') ||
-    message.includes('rate limit')
+    message.includes('rate limit') ||
+    message.includes('quota')
   );
+}
+
+/**
+ * Parses raw JSON error messages from Google API and returns a user-friendly Spanish message.
+ */
+export function formatGeminiErrorMessage(err: any): string {
+  if (!err) return 'Error inesperado al conectar con la IA de Gemini.';
+
+  let raw = err?.message || (typeof err === 'string' ? err : '');
+
+  // Attempt to parse if error.message is stringified JSON
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.error?.message) {
+      raw = parsed.error.message;
+    }
+  } catch {}
+
+  const lower = (raw || '').toLowerCase();
+
+  if (
+    isHighDemandOrTransientError(err) ||
+    lower.includes('503') ||
+    lower.includes('high demand') ||
+    lower.includes('unavailable') ||
+    lower.includes('overloaded') ||
+    lower.includes('spikes in demand')
+  ) {
+    return 'Los servidores de Google Gemini están experimentando una alta demanda momentánea (Error 503). Hemos probado varios modelos de respaldo. Por favor, pulsa en generar de nuevo en unos segundos.';
+  }
+
+  if (lower.includes('api_key_invalid') || lower.includes('api key not valid')) {
+    return 'La clave GEMINI_API_KEY no es válida. Comprueba que sea correcta en la configuración de la app.';
+  }
+
+  if (lower.includes('resource_exhausted') || lower.includes('quota') || lower.includes('429')) {
+    return 'Límite de peticiones de la API de Gemini alcanzado temporalmente. Espera unos segundos y vuelve a pulsar el botón.';
+  }
+
+  return raw || 'Error al procesar la solicitud con la IA de Gemini.';
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Executes a Gemini request with automatic retries, backoff, and fallback models
- * to ensure maximum reliability even during Google API 503 capacity spikes.
+ * Executes a Gemini request with instant failover across high-availability models:
+ * gemini-flash-latest -> gemini-3.1-flash-lite -> gemini-3.8-flash.
+ * If a model returns 503 (high demand), it immediately tries the next model without wasting time retrying the dead model.
  */
 export async function generateContentWithFallback(
   ai: GoogleGenAI,
@@ -84,22 +135,26 @@ export async function generateContentWithFallback(
     primaryModel?: string;
   }
 ) {
-  // Candidate fallback chain: gemini-3.8-flash -> gemini-3.1-flash-lite -> gemini-flash-latest
+  // Ordered by highest capacity and least 503 saturation:
+  // 1. gemini-flash-latest (high-availability production standard)
+  // 2. gemini-3.1-flash-lite (ultra-fast, separate lightweight cluster)
+  // 3. gemini-3.8-flash (advanced preview)
   const modelsToTry = [
     params.primaryModel || GEMINI_TEXT_MODEL,
-    'gemini-3.1-flash-lite',
     'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
   ].filter((model, idx, arr) => arr.indexOf(model) === idx);
 
   let lastError: any = null;
 
-  for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
-    const currentModel = modelsToTry[mIdx];
-    const maxAttempts = mIdx === 0 ? 3 : 2;
+  // Maximum 2 complete rounds across the candidate pool
+  for (let round = 1; round <= 2; round++) {
+    for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+      const currentModel = modelsToTry[mIdx];
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        console.log(`[Gemini] Ejecutando petición con modelo "${currentModel}" (intento ${attempt}/${maxAttempts})...`);
+        console.log(`[Gemini] Ejecutando petición con modelo "${currentModel}" (ronda ${round})...`);
         const response = await ai.models.generateContent({
           model: currentModel,
           contents: params.contents,
@@ -111,34 +166,26 @@ export async function generateContentWithFallback(
         }
       } catch (err: any) {
         lastError = err;
-        console.warn(`[Gemini] Error en modelo "${currentModel}" (intento ${attempt}):`, err?.message || err);
+        console.warn(`[Gemini] Error en modelo "${currentModel}":`, err?.message || err);
 
         if (isHighDemandOrTransientError(err)) {
-          if (attempt < maxAttempts) {
-            const delay = attempt * 1200 + Math.random() * 400;
-            console.log(`[Gemini] Alta demanda detectada (503/429). Reintentando en ${Math.round(delay)}ms...`);
-            await sleep(delay);
-            continue;
-          }
-          console.log(`[Gemini] Modelo "${currentModel}" saturado. Probando modelo alternativo de respaldo...`);
-          await sleep(500);
-          break; // Try next model in fallback list
+          // Do NOT retry the same saturated model; instantly jump to the next model in the pool!
+          console.log(`[Gemini] Modelo "${currentModel}" saturado (503/429). Conmutando de inmediato al siguiente modelo...`);
+          continue;
         } else {
-          // If error is not transient (e.g. fatal syntax or validation), don't retry endlessly
-          if (attempt === maxAttempts) break;
-          await sleep(600);
+          // If non-transient error (e.g. fatal syntax or validation), break immediately
+          throw err;
         }
       }
     }
+
+    // If round 1 exhausted all models due to transient demand spikes, wait briefly before round 2
+    if (round < 2) {
+      await sleep(600);
+    }
   }
 
-  if (isHighDemandOrTransientError(lastError)) {
-    throw new Error(
-      'Los servidores de Google Gemini están experimentando una sobrecarga temporal de demanda (Error 503). Hemos reintentado automáticamente con varios modelos de respaldo. Por favor, pulsa el botón de nuevo en unos instantes.'
-    );
-  }
-
-  throw lastError || new Error('No se pudo obtener respuesta de la IA tras varios intentos.');
+  throw new Error(formatGeminiErrorMessage(lastError));
 }
 
 let cachedKey = '';
@@ -168,10 +215,10 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 export const geminiService = {
-  // Check if an API key is available
+  // Check if an API key is available (Gemini or Fallback provider)
   hasApiKey(): boolean {
     const key = getGeminiApiKey();
-    return Boolean(key && key !== 'MY_GEMINI_API_KEY');
+    return Boolean((key && key !== 'MY_GEMINI_API_KEY') || isFallbackConfigured());
   },
 
   // Generate exam from syllabus materials and educational specifications
@@ -201,8 +248,6 @@ export const geminiService = {
 
     const timeLimitMinutes = Math.max(0, Number(config.timeLimitMinutes) || 20);
     const additionalNotes = (config.additionalNotes || '').trim();
-
-    const ai = getGeminiClient();
 
     // Prepare multimodal parts (images, PDFs and text)
     const contents: any[] = [];
@@ -320,8 +365,11 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
 
     contents.push({ text: userPromptText });
 
+    let responseText = '';
+
     try {
-      // Use resilient generation with backoff & fallback models to prevent 503 outages
+      // 1. Primary generation call with Gemini API
+      const ai = getGeminiClient();
       const response = await generateContentWithFallback(ai, {
         primaryModel: GEMINI_TEXT_MODEL,
         contents,
@@ -333,70 +381,115 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
         },
       });
 
-      const responseText = response.text || '';
+      responseText = response.text || '';
       if (!responseText.trim()) {
-        throw new Error('La IA no devolvió ningún contenido.');
+        throw new Error('La IA de Gemini no devolvió ningún contenido.');
       }
+    } catch (primaryErr: any) {
+      console.warn('[Gemini] Fallo en la llamada principal a Gemini:', primaryErr?.message || primaryErr);
 
-      let examData: any;
-      try {
-        examData = JSON.parse(responseText);
-      } catch {
-        // Fallback: search for JSON object inside markdown or wrapping text
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          examData = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('La IA no devolvió una estructura JSON legible.');
+      // 2. Multi-provider fallback: if VITE_FALLBACK_API_KEY is configured, forward the same request
+      const fallbackKey = getFallbackApiKey();
+
+      if (fallbackKey) {
+        console.log(
+          '[Fallback Multi-Proveedor] Activando proveedor de respaldo ante saturación 503, 429 o fallo de red en Gemini...'
+        );
+        try {
+          responseText = await executeFallbackGeneration({
+            apiKey: fallbackKey,
+            systemPrompt,
+            userPromptText,
+            materials,
+          });
+          console.log('[Fallback Multi-Proveedor] Examen generado con éxito usando el proveedor de respaldo.');
+        } catch (fallbackErr: any) {
+          console.error('[Fallback Multi-Proveedor] Fallo en la API de respaldo:', fallbackErr);
+          throw new Error(
+            `Fallo en Gemini (${formatGeminiErrorMessage(primaryErr)}) y fallo en el proveedor de respaldo: ${fallbackErr.message || fallbackErr}`
+          );
         }
+      } else {
+        // No fallback provider configured, throw standard formatted Gemini error
+        throw new Error(formatGeminiErrorMessage(primaryErr));
       }
+    }
 
-      let currentTotalPoints = 0;
-      const questions = (examData.questions || []).map((q: any, idx: number) => {
-        const qPoints = Number(q.points) || (q.type === 'open' ? 2 : 1);
-        currentTotalPoints += qPoints;
+    // 3. Normalize JSON response into exact same Exam structure regardless of provider
+    let examData: any;
+    try {
+      examData = JSON.parse(responseText);
+    } catch {
+      // Fallback: search for JSON object inside markdown or wrapping text
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        examData = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('La IA no devolvió una estructura JSON legible.');
+      }
+    }
+
+    let currentTotalPoints = 0;
+    const questions = (examData.questions || []).map((q: any, idx: number) => {
+      const qPoints = Number(q.points) || (q.type === 'open' ? 2 : 1);
+      currentTotalPoints += qPoints;
+      const isMultipleChoice =
+        q.type === 'multiple_choice' ||
+        (!q.type && Array.isArray(q.options) && q.options.length > 0);
+
+      if (isMultipleChoice) {
         return {
-          ...q,
           id: q.id || `q_${idx + 1}`,
           points: qPoints,
-          type: q.type === 'open' ? 'open' : 'multiple_choice',
-          options: Array.isArray(q.options) ? q.options : ['Opción A', 'Opción B', 'Opción C', 'Opción D'],
-          correctOptionIndex: typeof q.correctOptionIndex === 'number' ? q.correctOptionIndex : 0,
-          explanation: q.explanation || 'Respuesta fundamentada en el temario.',
+          type: 'multiple_choice' as const,
+          questionText: q.questionText || `Pregunta ${idx + 1}`,
+          options:
+            Array.isArray(q.options) && q.options.length >= 2
+              ? q.options.map((opt: any) => String(opt || ''))
+              : ['Opción A', 'Opción B', 'Opción C', 'Opción D'],
+          correctOptionIndex:
+            typeof q.correctOptionIndex === 'number' && q.correctOptionIndex >= 0
+              ? q.correctOptionIndex
+              : 0,
+          explanation:
+            q.explanation || 'Respuesta correcta fundamentada en los conceptos del temario evaluado.',
         };
-      });
+      } else {
+        return {
+          id: q.id || `q_${idx + 1}`,
+          points: qPoints,
+          type: 'open' as const,
+          questionText: q.questionText || `Pregunta de desarrollo ${idx + 1}`,
+          sampleAnswer:
+            q.sampleAnswer || 'Respuesta modelo basada en los conceptos clave del temario.',
+          gradingCriteria:
+            Array.isArray(q.gradingCriteria) && q.gradingCriteria.length > 0
+              ? q.gradingCriteria.map((c: any) => String(c || ''))
+              : [
+                  'Comprensión del concepto principal',
+                  'Precisión terminológica',
+                  'Desarrollo argumentativo',
+                ],
+          hint: q.hint || undefined,
+        };
+      }
+    });
 
-      const exam: Exam = {
-        id: `exam_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        title: examData.title || `Examen de ${subject}: ${topic}`,
-        subject,
-        topic,
-        level,
-        difficulty,
-        createdAt: new Date().toISOString(),
-        timeLimitMinutes: Number(examData.suggestedTimeMinutes) || timeLimitMinutes || 20,
-        overview: examData.overview || `Examen generado sobre ${topic} (${subject}).`,
-        questions,
-        totalPoints: currentTotalPoints || 10,
-      };
+    const exam: Exam = {
+      id: `exam_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      title: examData.title || `Examen de ${subject}: ${topic}`,
+      subject,
+      topic,
+      level,
+      difficulty,
+      createdAt: new Date().toISOString(),
+      timeLimitMinutes: Number(examData.suggestedTimeMinutes) || timeLimitMinutes || 20,
+      overview: examData.overview || `Examen generado sobre ${topic} (${subject}).`,
+      questions,
+      totalPoints: currentTotalPoints || 10,
+    };
 
-      return exam;
-    } catch (err: any) {
-      console.error('Error generating exam with Gemini API:', err);
-      const msg = err.message || '';
-      if (isHighDemandOrTransientError(err) || msg.includes('503') || msg.includes('high demand')) {
-        throw new Error(
-          'Los servidores de Gemini están experimentando una alta demanda temporal (Error 503). Hemos intentado reconectar con modelos de respaldo. Por favor, pulsa en generar de nuevo en unos segundos.'
-        );
-      }
-      if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
-        throw new Error('La clave GEMINI_API_KEY no es válida. Comprueba que sea correcta en la configuración.');
-      }
-      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
-        throw new Error('Límite de cuota de Gemini alcanzado temporalmente. Espera unos segundos e inténtalo de nuevo.');
-      }
-      throw new Error(err.message || 'Error al procesar el examen con la IA de Gemini.');
-    }
+    return exam;
   },
 
   // Generate study notes from syllabus materials and educational specifications
@@ -581,19 +674,7 @@ Devuelve exclusivamente el objeto JSON válido.`;
       return note;
     } catch (err: any) {
       console.error('Error generating study notes with Gemini API:', err);
-      const msg = err.message || '';
-      if (isHighDemandOrTransientError(err) || msg.includes('503') || msg.includes('high demand')) {
-        throw new Error(
-          'Los servidores de Gemini están experimentando una alta demanda temporal (Error 503). Hemos intentado reconectar con modelos de respaldo. Por favor, pulsa en generar apuntes de nuevo en unos segundos.'
-        );
-      }
-      if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
-        throw new Error('La clave GEMINI_API_KEY no es válida. Comprueba que sea correcta en la configuración.');
-      }
-      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
-        throw new Error('Límite de cuota de Gemini alcanzado temporalmente. Espera unos segundos e inténtalo de nuevo.');
-      }
-      throw new Error(err.message || 'Error al procesar los apuntes con la IA de Gemini.');
+      throw new Error(formatGeminiErrorMessage(err));
     }
   },
 

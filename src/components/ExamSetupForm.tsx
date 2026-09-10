@@ -236,7 +236,12 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
     try {
       await onGenerate(config, materials, isMultiplayer);
     } catch (err: any) {
-      setValidationError(err.message || 'Error al generar el examen con IA. Inténtalo de nuevo.');
+      let msg = err.message || 'Error al generar el examen con IA. Inténtalo de nuevo.';
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed?.error?.message) msg = parsed.error.message;
+      } catch {}
+      setValidationError(msg);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };

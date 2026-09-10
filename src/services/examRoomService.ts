@@ -1,3 +1,4 @@
+import { supabase, isSupabaseConfigured } from './supabase';
 import {
   doc,
   setDoc,
@@ -14,6 +15,9 @@ import { Exam, ExamRoom, RoomParticipant } from '../types';
 
 const ROOMS_COLLECTION = 'exam_rooms';
 const LOCAL_STORAGE_KEY_ROOMS = 'testify_local_exam_rooms';
+
+// Active Realtime channels cache for Supabase
+const activeSupabaseChannels = new Map<string, any>();
 
 // Generate a random 6-character alphanumeric room PIN (no ambiguous chars like 0/O, 1/I)
 function generateRoomCode(): string {
@@ -43,6 +47,46 @@ function saveLocalRoom(room: ExamRoom) {
     localStorage.setItem(LOCAL_STORAGE_KEY_ROOMS, JSON.stringify(rooms));
   } catch (e) {
     console.error('Error saving local room fallback:', e);
+  }
+}
+
+function mapSupabaseRowToRoom(row: any): ExamRoom {
+  return {
+    id: row.id,
+    code: (row.code || '').toUpperCase(),
+    hostId: row.host_id || row.hostId,
+    hostName: row.host_name || row.hostName,
+    status: row.status || 'waiting',
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    startedAt: row.started_at || row.startedAt,
+    exam: typeof row.exam === 'string' ? JSON.parse(row.exam) : row.exam,
+    participants:
+      typeof row.participants === 'string'
+        ? JSON.parse(row.participants)
+        : row.participants || {},
+  };
+}
+
+// Broadcast room state via Supabase Realtime channel
+function broadcastSupabaseRoom(room: ExamRoom) {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const channelName = `exam_room_${room.code.toUpperCase()}`;
+    let ch = activeSupabaseChannels.get(channelName);
+    if (!ch) {
+      ch = supabase.channel(channelName, {
+        config: { broadcast: { self: true } },
+      });
+      ch.subscribe();
+      activeSupabaseChannels.set(channelName, ch);
+    }
+    ch.send({
+      type: 'broadcast',
+      event: 'room_sync',
+      payload: room,
+    });
+  } catch (e) {
+    console.warn('Could not broadcast room state to Supabase channel:', e);
   }
 }
 
@@ -79,12 +123,33 @@ export const examRoomService = {
       },
     };
 
-    // Save to Firestore
+    // 1. Try Supabase first (primary database & realtime engine)
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('exam_rooms').upsert({
+          id: roomId,
+          code: code.toUpperCase(),
+          host_id: host.id,
+          host_name: host.name,
+          status: 'waiting',
+          created_at: room.createdAt,
+          exam: room.exam,
+          participants: room.participants,
+        });
+      } catch (sbErr) {
+        console.warn('Supabase upsert room error (will use Realtime & Local):', sbErr);
+      }
+    }
+
+    // 2. Broadcast via Supabase Realtime channel
+    broadcastSupabaseRoom(room);
+
+    // 3. Fallback / replica to Firestore if available
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
       await setDoc(roomRef, room);
     } catch (err) {
-      console.warn('Could not write room to Firestore, using local fallback:', err);
+      // Ignored if Firestore is not in use
     }
 
     // Always cache locally as well
@@ -97,7 +162,26 @@ export const examRoomService = {
   async getRoomByCode(code: string): Promise<ExamRoom | null> {
     const upperCode = code.trim().toUpperCase();
 
-    // 1. Try Firestore query
+    // 1. Try Supabase first
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('exam_rooms')
+          .select('*')
+          .eq('code', upperCode)
+          .maybeSingle();
+
+        if (data && !error) {
+          const room = mapSupabaseRowToRoom(data);
+          saveLocalRoom(room);
+          return room;
+        }
+      } catch (sbErr) {
+        console.warn('Supabase getRoomByCode notice:', sbErr);
+      }
+    }
+
+    // 2. Try Firestore query
     try {
       const q = query(
         collection(db, ROOMS_COLLECTION),
@@ -105,13 +189,15 @@ export const examRoomService = {
       );
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        return snapshot.docs[0].data() as ExamRoom;
+        const room = snapshot.docs[0].data() as ExamRoom;
+        saveLocalRoom(room);
+        return room;
       }
     } catch (err) {
-      console.warn('Firestore query by code failed, falling back to local storage:', err);
+      // Firestore fallback
     }
 
-    // 2. Fallback to local storage
+    // 3. Fallback to local storage
     const localRooms = getLocalRooms();
     const local = Object.values(localRooms).find(
       (r) => r.code.toUpperCase() === upperCode
@@ -121,14 +207,36 @@ export const examRoomService = {
 
   // Get room by ID
   async getRoom(roomId: string): Promise<ExamRoom | null> {
+    // 1. Try Supabase first
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('exam_rooms')
+          .select('*')
+          .eq('id', roomId)
+          .maybeSingle();
+
+        if (data && !error) {
+          const room = mapSupabaseRowToRoom(data);
+          saveLocalRoom(room);
+          return room;
+        }
+      } catch (sbErr) {
+        console.warn('Supabase getRoom notice:', sbErr);
+      }
+    }
+
+    // 2. Try Firestore
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
       const snap = await getDoc(roomRef);
       if (snap.exists()) {
-        return snap.data() as ExamRoom;
+        const room = snap.data() as ExamRoom;
+        saveLocalRoom(room);
+        return room;
       }
     } catch (err) {
-      console.warn('Firestore getRoom failed, falling back:', err);
+      // Firestore fallback
     }
 
     const localRooms = getLocalRooms();
@@ -171,13 +279,31 @@ export const examRoomService = {
       participants: updatedParticipants,
     };
 
+    // 1. Update Supabase
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase
+          .from('exam_rooms')
+          .update({
+            participants: updatedParticipants,
+          })
+          .eq('id', roomId);
+      } catch (sbErr) {
+        console.warn('Supabase update room participants notice:', sbErr);
+      }
+    }
+
+    // 2. Broadcast via Supabase Realtime channel
+    broadcastSupabaseRoom(updatedRoom);
+
+    // 3. Update Firestore if active
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
       await updateDoc(roomRef, {
         [`participants.${participant.id}`]: newParticipant,
       });
     } catch (err) {
-      console.warn('Firestore update participant failed, saving local:', err);
+      // Firestore fallback
     }
 
     saveLocalRoom(updatedRoom);
@@ -187,7 +313,32 @@ export const examRoomService = {
   // Start exam for everyone in the room (Host only)
   async startRoom(roomId: string): Promise<void> {
     const startedAt = new Date().toISOString();
+    const currentRoom = await this.getRoom(roomId);
 
+    if (currentRoom) {
+      currentRoom.status = 'in_progress';
+      currentRoom.startedAt = startedAt;
+
+      // 1. Update Supabase
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase
+            .from('exam_rooms')
+            .update({
+              status: 'in_progress',
+              started_at: startedAt,
+            })
+            .eq('id', roomId);
+        } catch (sbErr) {
+          console.warn('Supabase startRoom notice:', sbErr);
+        }
+      }
+
+      // 2. Broadcast immediately via Supabase Realtime
+      broadcastSupabaseRoom(currentRoom);
+    }
+
+    // 3. Update Firestore
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
       await updateDoc(roomRef, {
@@ -195,7 +346,7 @@ export const examRoomService = {
         startedAt,
       });
     } catch (err) {
-      console.warn('Firestore startRoom failed, updating local:', err);
+      // Ignored if Firestore not in use
     }
 
     const localRooms = getLocalRooms();
@@ -218,7 +369,39 @@ export const examRoomService = {
     }
   ): Promise<void> {
     const finishedAt = new Date().toISOString();
+    const currentRoom = await this.getRoom(roomId);
 
+    if (currentRoom && currentRoom.participants[participantId]) {
+      currentRoom.participants[participantId] = {
+        ...currentRoom.participants[participantId],
+        status: 'finished',
+        score: result.score,
+        maxScore: result.maxScore,
+        percentage: result.percentage,
+        timeSpentSeconds: result.timeSpentSeconds,
+        finishedAt,
+      };
+
+      // 1. Update Supabase
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase
+            .from('exam_rooms')
+            .update({
+              participants: currentRoom.participants,
+            })
+            .eq('id', roomId);
+        } catch (sbErr) {
+          console.warn('Supabase submit result notice:', sbErr);
+        }
+      }
+
+      // 2. Broadcast via Supabase Realtime
+      broadcastSupabaseRoom(currentRoom);
+      saveLocalRoom(currentRoom);
+    }
+
+    // 3. Update Firestore
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
       await updateDoc(roomRef, {
@@ -230,54 +413,116 @@ export const examRoomService = {
         [`participants.${participantId}.finishedAt`]: finishedAt,
       });
     } catch (err) {
-      console.warn('Firestore submitParticipantResult failed, updating local:', err);
-    }
-
-    const localRooms = getLocalRooms();
-    if (localRooms[roomId] && localRooms[roomId].participants[participantId]) {
-      const p = localRooms[roomId].participants[participantId];
-      p.status = 'finished';
-      p.score = result.score;
-      p.maxScore = result.maxScore;
-      p.percentage = result.percentage;
-      p.timeSpentSeconds = result.timeSpentSeconds;
-      p.finishedAt = finishedAt;
-      saveLocalRoom(localRooms[roomId]);
+      // Ignored
     }
   },
 
-  // Real-time room subscription with Firestore
+  // Real-time room subscription with Supabase Realtime + polling backup
   subscribeToRoom(
     roomId: string,
     callback: (room: ExamRoom | null) => void
   ): () => void {
+    let isSubscribed = true;
+    let firestoreUnsub: (() => void) | null = null;
+    let pollInterval: any = null;
+
+    // Send initial cached state
+    this.getRoom(roomId).then((initialRoom) => {
+      if (isSubscribed && initialRoom) {
+        callback(initialRoom);
+      }
+    });
+
+    // 1. Supabase Realtime Channel Subscription
+    let supabaseChannel: any = null;
+    if (isSupabaseConfigured()) {
+      try {
+        // Room code can be extracted or derived from getRoom
+        this.getRoom(roomId).then((room) => {
+          if (!isSubscribed || !room) return;
+          const channelName = `exam_room_${room.code.toUpperCase()}`;
+          supabaseChannel = supabase.channel(channelName, {
+            config: { broadcast: { self: true } },
+          });
+
+          supabaseChannel
+            .on('broadcast', { event: 'room_sync' }, (payload: any) => {
+              if (isSubscribed && payload?.payload) {
+                const updated = payload.payload as ExamRoom;
+                saveLocalRoom(updated);
+                callback(updated);
+              }
+            })
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'exam_rooms',
+                filter: `id=eq.${roomId}`,
+              },
+              (payload: any) => {
+                if (isSubscribed && payload?.new) {
+                  const updated = mapSupabaseRowToRoom(payload.new);
+                  saveLocalRoom(updated);
+                  callback(updated);
+                }
+              }
+            )
+            .subscribe();
+        });
+      } catch (sbErr) {
+        console.warn('Supabase subscribe error:', sbErr);
+      }
+    }
+
+    // 2. Setup periodic synchronization to guarantee sync across tabs/devices
+    pollInterval = setInterval(async () => {
+      if (!isSubscribed) return;
+      try {
+        const latest = await this.getRoom(roomId);
+        if (isSubscribed && latest) {
+          callback(latest);
+        }
+      } catch (e) {
+        // Ignore poll errors
+      }
+    }, 2500);
+
+    // 3. Fallback Firestore onSnapshot if available
     try {
       const roomRef = doc(db, ROOMS_COLLECTION, roomId);
-      const unsubscribe = onSnapshot(
+      firestoreUnsub = onSnapshot(
         roomRef,
         (snap) => {
-          if (snap.exists()) {
+          if (isSubscribed && snap.exists()) {
             const data = snap.data() as ExamRoom;
             saveLocalRoom(data);
             callback(data);
-          } else {
-            callback(null);
           }
         },
-        (error) => {
-          console.warn('Firestore room snapshot error:', error);
-          // Fallback to local snapshot polling
-          const local = getLocalRooms()[roomId] || null;
-          callback(local);
+        () => {
+          // Firestore subscription silent fallback
         }
       );
-      return unsubscribe;
-    } catch (err) {
-      console.warn('subscribeToRoom initialization failed:', err);
-      // Fallback
-      const local = getLocalRooms()[roomId] || null;
-      callback(local);
-      return () => {};
+    } catch {
+      // Ignored
     }
+
+    return () => {
+      isSubscribed = false;
+      if (pollInterval) clearInterval(pollInterval);
+      if (supabaseChannel) {
+        try {
+          supabase.removeChannel(supabaseChannel);
+        } catch {}
+      }
+      if (firestoreUnsub) {
+        try {
+          firestoreUnsub();
+        } catch {}
+      }
+    };
   },
 };
+
