@@ -160,6 +160,12 @@ export interface StudyNote {
   keyConcepts: KeyConceptItem[];
   quickReviewQuestions: QuickReviewQuestion[];
   tags: string[];
+  isPublished?: boolean;
+  publishedAt?: string;
+  authorName?: string;
+  authorEmail?: string;
+  likesCount?: number;
+  downloadsCount?: number;
 }
 
 export interface RoomParticipant {

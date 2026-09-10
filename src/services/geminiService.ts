@@ -40,6 +40,107 @@ export const getGeminiApiKey = (): string => {
 // Use modern supported model as mandated by Google AI Studio Gemini API guidelines
 export const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
 
+/**
+ * Checks if an error corresponds to temporary high demand (HTTP 503 UNAVAILABLE) or rate limiting.
+ */
+export function isHighDemandOrTransientError(error: any): boolean {
+  if (!error) return false;
+  const status = error?.status || error?.code || error?.error?.code || error?.error?.status;
+  const message = (
+    error?.message ||
+    error?.error?.message ||
+    (typeof error === 'string' ? error : '') ||
+    JSON.stringify(error) ||
+    ''
+  ).toLowerCase();
+
+  return (
+    status === 503 ||
+    status === 'UNAVAILABLE' ||
+    status === 429 ||
+    status === 'RESOURCE_EXHAUSTED' ||
+    message.includes('503') ||
+    message.includes('high demand') ||
+    message.includes('unavailable') ||
+    message.includes('overloaded') ||
+    message.includes('spikes in demand') ||
+    message.includes('temporary') ||
+    message.includes('resource_exhausted') ||
+    message.includes('rate limit')
+  );
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Executes a Gemini request with automatic retries, backoff, and fallback models
+ * to ensure maximum reliability even during Google API 503 capacity spikes.
+ */
+export async function generateContentWithFallback(
+  ai: GoogleGenAI,
+  params: {
+    contents: any;
+    config: any;
+    primaryModel?: string;
+  }
+) {
+  // Candidate fallback chain: gemini-3.8-flash -> gemini-3.1-flash-lite -> gemini-flash-latest
+  const modelsToTry = [
+    params.primaryModel || GEMINI_TEXT_MODEL,
+    'gemini-3.1-flash-lite',
+    'gemini-flash-latest',
+  ].filter((model, idx, arr) => arr.indexOf(model) === idx);
+
+  let lastError: any = null;
+
+  for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+    const currentModel = modelsToTry[mIdx];
+    const maxAttempts = mIdx === 0 ? 3 : 2;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log(`[Gemini] Ejecutando petición con modelo "${currentModel}" (intento ${attempt}/${maxAttempts})...`);
+        const response = await ai.models.generateContent({
+          model: currentModel,
+          contents: params.contents,
+          config: params.config,
+        });
+
+        if (response && response.text && response.text.trim()) {
+          return response;
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[Gemini] Error en modelo "${currentModel}" (intento ${attempt}):`, err?.message || err);
+
+        if (isHighDemandOrTransientError(err)) {
+          if (attempt < maxAttempts) {
+            const delay = attempt * 1200 + Math.random() * 400;
+            console.log(`[Gemini] Alta demanda detectada (503/429). Reintentando en ${Math.round(delay)}ms...`);
+            await sleep(delay);
+            continue;
+          }
+          console.log(`[Gemini] Modelo "${currentModel}" saturado. Probando modelo alternativo de respaldo...`);
+          await sleep(500);
+          break; // Try next model in fallback list
+        } else {
+          // If error is not transient (e.g. fatal syntax or validation), don't retry endlessly
+          if (attempt === maxAttempts) break;
+          await sleep(600);
+        }
+      }
+    }
+  }
+
+  if (isHighDemandOrTransientError(lastError)) {
+    throw new Error(
+      'Los servidores de Google Gemini están experimentando una sobrecarga temporal de demanda (Error 503). Hemos reintentado automáticamente con varios modelos de respaldo. Por favor, pulsa el botón de nuevo en unos instantes.'
+    );
+  }
+
+  throw lastError || new Error('No se pudo obtener respuesta de la IA tras varios intentos.');
+}
+
 let cachedKey = '';
 let aiClient: GoogleGenAI | null = null;
 
@@ -220,9 +321,9 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
     contents.push({ text: userPromptText });
 
     try {
-      // Use gemini-3.8-flash with well-structured generationConfig parameters
-      const response = await ai.models.generateContent({
-        model: GEMINI_TEXT_MODEL,
+      // Use resilient generation with backoff & fallback models to prevent 503 outages
+      const response = await generateContentWithFallback(ai, {
+        primaryModel: GEMINI_TEXT_MODEL,
         contents,
         config: {
           systemInstruction: systemPrompt,
@@ -283,6 +384,11 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
     } catch (err: any) {
       console.error('Error generating exam with Gemini API:', err);
       const msg = err.message || '';
+      if (isHighDemandOrTransientError(err) || msg.includes('503') || msg.includes('high demand')) {
+        throw new Error(
+          'Los servidores de Gemini están experimentando una alta demanda temporal (Error 503). Hemos intentado reconectar con modelos de respaldo. Por favor, pulsa en generar de nuevo en unos segundos.'
+        );
+      }
       if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
         throw new Error('La clave GEMINI_API_KEY no es válida. Comprueba que sea correcta en la configuración.');
       }
@@ -429,8 +535,8 @@ Devuelve exclusivamente el objeto JSON válido.`;
     contents.push({ text: userPromptText });
 
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_TEXT_MODEL,
+      const response = await generateContentWithFallback(ai, {
+        primaryModel: GEMINI_TEXT_MODEL,
         contents,
         config: {
           systemInstruction: systemPrompt,
@@ -476,6 +582,11 @@ Devuelve exclusivamente el objeto JSON válido.`;
     } catch (err: any) {
       console.error('Error generating study notes with Gemini API:', err);
       const msg = err.message || '';
+      if (isHighDemandOrTransientError(err) || msg.includes('503') || msg.includes('high demand')) {
+        throw new Error(
+          'Los servidores de Gemini están experimentando una alta demanda temporal (Error 503). Hemos intentado reconectar con modelos de respaldo. Por favor, pulsa en generar apuntes de nuevo en unos segundos.'
+        );
+      }
       if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
         throw new Error('La clave GEMINI_API_KEY no es válida. Comprueba que sea correcta en la configuración.');
       }
@@ -550,8 +661,8 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
   "improvements": ["Faltó explicar la fase...", "Cuidado con confundir el término X con Y..."]
 }`;
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_TEXT_MODEL,
+      const response = await generateContentWithFallback(ai, {
+        primaryModel: GEMINI_TEXT_MODEL,
         contents: prompt,
         config: {
           responseMimeType: 'application/json',

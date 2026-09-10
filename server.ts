@@ -16,6 +16,97 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Supported modern Gemini model
 const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
 
+function isHighDemandOrTransientError(error: any): boolean {
+  if (!error) return false;
+  const status = error?.status || error?.code || error?.error?.code || error?.error?.status;
+  const message = (
+    error?.message ||
+    error?.error?.message ||
+    (typeof error === 'string' ? error : '') ||
+    JSON.stringify(error) ||
+    ''
+  ).toLowerCase();
+
+  return (
+    status === 503 ||
+    status === 'UNAVAILABLE' ||
+    status === 429 ||
+    status === 'RESOURCE_EXHAUSTED' ||
+    message.includes('503') ||
+    message.includes('high demand') ||
+    message.includes('unavailable') ||
+    message.includes('overloaded') ||
+    message.includes('spikes in demand') ||
+    message.includes('temporary') ||
+    message.includes('rate limit')
+  );
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function generateContentWithFallback(
+  ai: GoogleGenAI,
+  params: {
+    contents: any;
+    config: any;
+    primaryModel?: string;
+  }
+) {
+  const modelsToTry = [
+    params.primaryModel || GEMINI_TEXT_MODEL,
+    'gemini-3.1-flash-lite',
+    'gemini-flash-latest',
+  ].filter((model, idx, arr) => arr.indexOf(model) === idx);
+
+  let lastError: any = null;
+
+  for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+    const currentModel = modelsToTry[mIdx];
+    const maxAttempts = mIdx === 0 ? 3 : 2;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log(`[Server Gemini] Llamando a modelo "${currentModel}" (intento ${attempt}/${maxAttempts})...`);
+        const response = await ai.models.generateContent({
+          model: currentModel,
+          contents: params.contents,
+          config: params.config,
+        });
+
+        if (response && response.text && response.text.trim()) {
+          return response;
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[Server Gemini] Error en ${currentModel} (intento ${attempt}):`, err?.message || err);
+
+        if (isHighDemandOrTransientError(err)) {
+          if (attempt < maxAttempts) {
+            const delay = attempt * 1200 + Math.random() * 400;
+            console.log(`[Server Gemini] 503 detectado. Reintentando en ${Math.round(delay)}ms...`);
+            await sleep(delay);
+            continue;
+          }
+          console.log(`[Server Gemini] Modelo "${currentModel}" saturado. Conmutando a respaldo...`);
+          await sleep(500);
+          break;
+        } else {
+          if (attempt === maxAttempts) break;
+          await sleep(600);
+        }
+      }
+    }
+  }
+
+  if (isHighDemandOrTransientError(lastError)) {
+    throw new Error(
+      'Los servidores de Google Gemini están experimentando una sobrecarga temporal de demanda (Error 503). Por favor, intenta de nuevo en unos momentos.'
+    );
+  }
+
+  throw lastError || new Error('No se pudo obtener respuesta de la IA.');
+}
+
 // Lazy initialize Gemini client to avoid crashes if key is missing during build
 let geminiClient: GoogleGenAI | null = null;
 function getGemini(): GoogleGenAI {
@@ -208,8 +299,8 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
 
     parts.push({ text: userPromptText });
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_TEXT_MODEL,
+    const response = await generateContentWithFallback(ai, {
+      primaryModel: GEMINI_TEXT_MODEL,
       contents: parts,
       config: {
         systemInstruction: systemPrompt,
@@ -338,8 +429,8 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
   "improvements": ["Faltó explicar la fase...", "Cuidado con confundir el término X con Y..."]
 }`;
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_TEXT_MODEL,
+    const response = await generateContentWithFallback(ai, {
+      primaryModel: GEMINI_TEXT_MODEL,
       contents: prompt,
       config: {
         responseMimeType: 'application/json',

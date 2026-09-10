@@ -25,6 +25,12 @@ import {
   Camera,
   X,
   Eye,
+  Globe,
+  Share2,
+  Heart,
+  BookmarkPlus,
+  UserCheck,
+  RefreshCw,
 } from 'lucide-react';
 import {
   EducationalLevel,
@@ -109,17 +115,28 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
   onOpenAuthRequired,
   onGenerateExamFromNote,
 }) => {
-  // View mode: 'create' form, 'library' list, or 'read' view
-  const [subView, setSubView] = useState<'create' | 'library' | 'read'>('create');
+  // View mode: 'create' form, 'library' list, 'community' shared notes, or 'read' view
+  const [subView, setSubView] = useState<'create' | 'library' | 'community' | 'read'>('create');
   const [savedNotes, setSavedNotes] = useState<StudyNote[]>(() =>
     notesService.getNotes(user?.id)
   );
-  const [activeNote, setActiveNote] = useState<StudyNote | null>(() => {
-    const list = notesService.getNotes(user?.id);
-    return list.length > 0 ? list[0] : null;
-  });
+  // Default to null so no unwanted preloaded notes are shown
+  const [activeNote, setActiveNote] = useState<StudyNote | null>(null);
 
-  // Form states
+  // Community published notes state
+  const [publishedNotes, setPublishedNotes] = useState<StudyNote[]>(() =>
+    notesService.getCachedPublishedNotes()
+  );
+  const [isLoadingCommunity, setIsLoadingCommunity] = useState<boolean>(false);
+  const [communitySearchQuery, setCommunitySearchQuery] = useState<string>('');
+  const [communitySubjectFilter, setCommunitySubjectFilter] = useState<string>('all');
+  const [publishModalNote, setPublishModalNote] = useState<StudyNote | null>(null);
+  const [authorDisplayName, setAuthorDisplayName] = useState<string>(user?.name || 'Estudiante');
+  const [isSubmittingPublish, setIsSubmittingPublish] = useState<boolean>(false);
+  const [copiedPublicId, setCopiedPublicId] = useState<string | null>(null);
+  const [likedNoteIds, setLikedNoteIds] = useState<Record<string, boolean>>({});
+
+  // Form states (completely empty by default, no prefilled text)
   const [subject, setSubject] = useState('');
   const [topic, setTopic] = useState('');
   const [level, setLevel] = useState<EducationalLevel>('Bachillerato');
@@ -288,7 +305,108 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
     }
   };
 
-  // Filtered notes in library
+  // Fetch community notes from Firestore on mount
+  React.useEffect(() => {
+    const fetchCommunity = async () => {
+      setIsLoadingCommunity(true);
+      try {
+        const notes = await notesService.getPublishedNotes();
+        setPublishedNotes(notes);
+      } catch (e) {
+        console.warn('Error loading public notes:', e);
+      } finally {
+        setIsLoadingCommunity(false);
+      }
+    };
+    fetchCommunity();
+  }, []);
+
+  // Open Publish Modal
+  const handleOpenPublishModal = (note: StudyNote, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setPublishModalNote(note);
+    setAuthorDisplayName(note.authorName || user?.name || 'Estudiante');
+  };
+
+  // Confirm and save to public Firestore collection
+  const handleConfirmPublish = async () => {
+    if (!publishModalNote) return;
+    setIsSubmittingPublish(true);
+    try {
+      const published = await notesService.publishNote(
+        publishModalNote,
+        authorDisplayName.trim() || user?.name || 'Estudiante',
+        user?.email
+      );
+      reloadNotes();
+      if (activeNote?.id === published.id) {
+        setActiveNote(published);
+      }
+      const publicList = await notesService.getPublishedNotes();
+      setPublishedNotes(publicList);
+      setPublishModalNote(null);
+    } catch (err) {
+      console.error('Error publishing note:', err);
+      alert('Hubo un error al publicar el apunte. Por favor inténtalo de nuevo.');
+    } finally {
+      setIsSubmittingPublish(false);
+    }
+  };
+
+  // Unpublish / withdraw from public Firestore collection
+  const handleUnpublish = async (noteId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (
+      !confirm(
+        '¿Deseas retirar estos apuntes de la comunidad pública? Dejarán de ser visibles para otros estudiantes.'
+      )
+    )
+      return;
+    try {
+      const unpublished = await notesService.unpublishNote(noteId);
+      reloadNotes();
+      if (activeNote?.id === noteId && unpublished) {
+        setActiveNote(unpublished);
+      }
+      const publicList = await notesService.getPublishedNotes();
+      setPublishedNotes(publicList);
+    } catch (err) {
+      console.error('Error unpublishing note:', err);
+    }
+  };
+
+  // Like a community note
+  const handleLikeNote = async (noteId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (likedNoteIds[noteId]) return;
+    setLikedNoteIds((prev) => ({ ...prev, [noteId]: true }));
+    try {
+      const updatedCount = await notesService.likePublishedNote(noteId);
+      setPublishedNotes((prev) =>
+        prev.map((n) => (n.id === noteId ? { ...n, likesCount: updatedCount } : n))
+      );
+      if (activeNote?.id === noteId) {
+        setActiveNote((prev) => (prev ? { ...prev, likesCount: updatedCount } : null));
+      }
+    } catch (err) {
+      console.warn('Like error:', err);
+    }
+  };
+
+  // Save copy of published note to user's personal notes
+  const handleCopyPublicNote = async (note: StudyNote, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await notesService.copyPublishedNoteToMyNotes(note, user?.id);
+      reloadNotes();
+      setCopiedPublicId(note.id);
+      setTimeout(() => setCopiedPublicId(null), 2500);
+    } catch (err) {
+      console.error('Error copying note:', err);
+    }
+  };
+
+  // Filtered notes in personal library
   const filteredNotes = savedNotes.filter((note) => {
     const matchesSearch =
       note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -304,6 +422,28 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
   });
 
   const uniqueSubjects = Array.from(new Set(savedNotes.map((n) => n.subject)));
+
+  // Filtered community notes
+  const filteredCommunityNotes = publishedNotes.filter((note) => {
+    const q = communitySearchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      note.title.toLowerCase().includes(q) ||
+      note.subject.toLowerCase().includes(q) ||
+      note.topic.toLowerCase().includes(q) ||
+      (note.authorName && note.authorName.toLowerCase().includes(q)) ||
+      note.tags.some((t) => t.toLowerCase().includes(q));
+
+    const matchesSubject =
+      communitySubjectFilter === 'all' ||
+      note.subject.toLowerCase() === communitySubjectFilter.toLowerCase();
+
+    return matchesSearch && matchesSubject;
+  });
+
+  const uniqueCommunitySubjects = Array.from(
+    new Set(publishedNotes.map((n) => n.subject))
+  );
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
@@ -352,6 +492,22 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
           >
             <BookMarked className="w-3.5 h-3.5" />
             <span>Mis Apuntes ({savedNotes.length})</span>
+          </button>
+
+          <button
+            id="notes-tab-community"
+            onClick={() => {
+              setSubView('community');
+              notesService.getPublishedNotes().then((list) => setPublishedNotes(list)).catch(() => {});
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              subView === 'community'
+                ? 'bg-white text-indigo-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Comunidad 🌍 ({publishedNotes.length})</span>
           </button>
 
           {activeNote && (
@@ -430,7 +586,7 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
                       setSubject(e.target.value);
                       if (validationError) setValidationError(null);
                     }}
-                    placeholder="Ej. Biología Celular, Historia, Filosofía, Química..."
+                    placeholder="Ej. Historia Contemporánea, Filosofía, Química, Literatura..."
                     className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all ${
                       !subject.trim() && validationError
                         ? 'border-rose-400 ring-1 ring-rose-300'
@@ -642,7 +798,7 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
                     type="text"
                     value={focusKeywords}
                     onChange={(e) => setFocusKeywords(e.target.value)}
-                    placeholder="Ej. RuBisCO, fotólisis, ATP sintasa..."
+                    placeholder="Ej. Causas geopolíticas, tratados, fórmulas, conceptos clave..."
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
                   />
                   <p className="text-[11px] text-slate-400 mt-1">
@@ -667,9 +823,20 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
 
             {/* Validation Notice */}
             {validationError && (
-              <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-semibold flex items-center gap-2">
-                <span className="text-base">⚠️</span>
-                <span>{validationError}</span>
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⚠️</span>
+                  <span>{validationError}</span>
+                </div>
+                {(validationError.includes('503') || validationError.includes('demanda') || validationError.includes('segundos')) && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleGenerate(e as any)}
+                    className="self-start sm:self-center px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors"
+                  >
+                    Reintentar
+                  </button>
+                )}
               </div>
             )}
 
@@ -789,9 +956,21 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
                   <div>
                     {/* Header badges */}
                     <div className="flex items-center justify-between gap-2 mb-2.5">
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider">
-                        {note.subject}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider">
+                          {note.subject}
+                        </span>
+                        {note.isPublished ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <Globe className="w-2.5 h-2.5" />
+                            <span>Público</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-slate-400 px-1.5 py-0.5 bg-slate-100 rounded-md">
+                            Privado
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] font-medium text-slate-400">
                         {new Date(note.createdAt).toLocaleDateString()}
                       </span>
@@ -829,17 +1008,40 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
                       className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>Generar Examen</span>
+                      <span>Examen IA</span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={(e) => handleDeleteNote(note.id, e)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                      title="Eliminar apuntes"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {note.isPublished ? (
+                        <button
+                          type="button"
+                          onClick={(e) => handleUnpublish(note.id, e)}
+                          className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors"
+                          title="Retirar de la comunidad de apuntes"
+                        >
+                          Despublicar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenPublishModal(note, e)}
+                          className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1"
+                          title="Compartir estos apuntes con la comunidad pública"
+                        >
+                          <Globe className="w-3 h-3 text-indigo-500" />
+                          <span>Publicar</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteNote(note.id, e)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                        title="Eliminar apuntes"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -875,6 +1077,31 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
                   <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
                   <span>Generar Examen de estos Apuntes</span>
                 </button>
+
+                {/* Publish to community button */}
+                {activeNote.isPublished ? (
+                  <button
+                    id="btn-unpublish-notes"
+                    type="button"
+                    onClick={() => handleUnpublish(activeNote.id)}
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-rose-50 text-emerald-700 hover:text-rose-700 rounded-xl text-xs font-bold border border-emerald-200 hover:border-rose-200 transition-colors flex items-center gap-1.5"
+                    title="Hacer clic para retirar de la comunidad pública"
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>Publicado en Comunidad 🌍</span>
+                  </button>
+                ) : (
+                  <button
+                    id="btn-publish-notes"
+                    type="button"
+                    onClick={() => handleOpenPublishModal(activeNote)}
+                    className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 transition-colors flex items-center gap-1.5 shadow-2xs"
+                    title="Compartir estos apuntes con toda la comunidad de estudiantes"
+                  >
+                    <Globe className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Publicar en Comunidad 🌍</span>
+                  </button>
+                )}
 
                 <button
                   id="btn-copy-notes"
@@ -940,6 +1167,23 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
               <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-200">
                 {NOTES_STYLES.find((s) => s.id === activeNote.style)?.name || 'Resumen'}
               </span>
+              {activeNote.isPublished && (
+                <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <Globe className="w-3 h-3" />
+                  <span>Público en Comunidad</span>
+                </span>
+              )}
+              {activeNote.authorName && (
+                <span className="text-xs font-medium text-slate-500 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200">
+                  Por @{activeNote.authorName}
+                </span>
+              )}
+              {activeNote.likesCount !== undefined && activeNote.likesCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg bg-rose-50 text-rose-600 border border-rose-200">
+                  <Heart className="w-3 h-3 fill-rose-500 text-rose-500" />
+                  <span>{activeNote.likesCount} me gusta</span>
+                </span>
+              )}
               <span className="text-xs text-slate-400 ml-auto">
                 Creado el {new Date(activeNote.createdAt).toLocaleDateString()}
               </span>
@@ -1088,6 +1332,357 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
               <Sparkles className="w-4 h-4 text-indigo-600" />
               <span>Generar Examen Ahora</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================= VIEW 4: COMMUNITY PUBLISHED NOTES ================= */}
+      {subView === 'community' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/30 border border-indigo-400/40 text-indigo-300 flex items-center justify-center font-bold">
+                  <Globe className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
+                  Comunidad de Apuntes Abierta
+                </span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight">
+                Apuntes Públicos Compartidos por Estudiantes
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
+                Explora apuntes didácticos compartidos libremente. Puedes estudiarlos, guardarlos en tu biblioteca personal, darles me gusta o generar exámenes interactivos en 1 clic.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSubView('create')}
+              className="px-5 py-3 bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl text-xs font-bold transition-all shadow-md shrink-0 flex items-center gap-2"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Crear y Publicar Mis Apuntes</span>
+            </button>
+          </div>
+
+          {/* Search, Filter & Refresh Bar */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row items-center gap-3">
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                id="input-community-search"
+                type="text"
+                value={communitySearchQuery}
+                onChange={(e) => setCommunitySearchQuery(e.target.value)}
+                placeholder="Buscar por tema, materia, autor (@...) o concepto..."
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+              {/* Subject filter */}
+              {uniqueCommunitySubjects.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto max-w-[280px] pb-1 sm:pb-0">
+                  <button
+                    type="button"
+                    onClick={() => setCommunitySubjectFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                      communitySubjectFilter === 'all'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    Todas ({publishedNotes.length})
+                  </button>
+                  {uniqueCommunitySubjects.map((sub) => (
+                    <button
+                      key={sub}
+                      type="button"
+                      onClick={() => setCommunitySubjectFilter(sub)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                        communitySubjectFilter === sub
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {sub}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Refresh Button */}
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsLoadingCommunity(true);
+                  try {
+                    const list = await notesService.getPublishedNotes();
+                    setPublishedNotes(list);
+                  } finally {
+                    setIsLoadingCommunity(false);
+                  }
+                }}
+                disabled={isLoadingCommunity}
+                className="p-2 text-slate-500 hover:text-indigo-600 rounded-xl hover:bg-slate-100 border border-slate-200 transition-colors shrink-0"
+                title="Actualizar lista de la comunidad"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${isLoadingCommunity ? 'animate-spin text-indigo-600' : ''}`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Community Notes Content */}
+          {isLoadingCommunity && publishedNotes.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center max-w-md mx-auto space-y-3 shadow-xs">
+              <div className="w-10 h-10 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto" />
+              <p className="text-xs text-slate-500 font-medium">
+                Cargando apuntes compartidos por la comunidad...
+              </p>
+            </div>
+          ) : filteredCommunityNotes.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center max-w-md mx-auto space-y-4 shadow-xs">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+                <Globe className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">
+                {communitySearchQuery
+                  ? 'No se encontraron apuntes con ese filtro'
+                  : 'Aún no hay apuntes compartidos en la comunidad'}
+              </h3>
+              <p className="text-xs text-slate-500">
+                {communitySearchQuery
+                  ? 'Prueba a buscar con otras palabras clave o restablece los filtros.'
+                  : '¡Sé el primero en compartir tus apuntes! Crea un temario en el generador y pulsa "Publicar en Comunidad".'}
+              </p>
+              <button
+                type="button"
+                onClick={() => setSubView('create')}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+              >
+                Crear y Publicar Apuntes
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredCommunityNotes.map((note) => (
+                <div
+                  key={note.id}
+                  onClick={() => {
+                    setActiveNote(note);
+                    setSubView('read');
+                    setRevealedAnswers({});
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer flex flex-col justify-between group"
+                >
+                  <div>
+                    {/* Header badges */}
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider">
+                          {note.subject}
+                        </span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                          {note.level}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-medium text-slate-400">
+                        {note.publishedAt
+                          ? new Date(note.publishedAt).toLocaleDateString()
+                          : new Date(note.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+
+                    <h3 className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-2 mb-1.5">
+                      {note.title}
+                    </h3>
+
+                    <p className="text-[11px] font-semibold text-indigo-600 mb-2.5">
+                      Por @{note.authorName || 'Estudiante'}
+                    </p>
+
+                    <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-4">
+                      {note.summary}
+                    </p>
+
+                    {/* Key Concepts Count & Questions Count */}
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium pt-3 border-t border-slate-100">
+                      <span className="flex items-center gap-1">
+                        <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+                        {note.keyConcepts.length} conceptos
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <HelpCircle className="w-3.5 h-3.5 text-indigo-500" />
+                        {note.quickReviewQuestions.length} preguntas
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions footer */}
+                  <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-100">
+                    {/* Like button */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleLikeNote(note.id, e)}
+                      className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg border transition-all ${
+                        likedNoteIds[note.id]
+                          ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-2xs'
+                          : 'bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border-slate-200'
+                      }`}
+                      title="Dar Me Gusta a estos apuntes"
+                    >
+                      <Heart
+                        className={`w-3.5 h-3.5 ${
+                          likedNoteIds[note.id]
+                            ? 'fill-rose-500 text-rose-500'
+                            : 'text-slate-400 group-hover:text-rose-400'
+                        }`}
+                      />
+                      <span>{note.likesCount || 0}</span>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      {/* Copy to my notes button */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleCopyPublicNote(note, e)}
+                        className="text-xs font-semibold text-slate-600 hover:text-indigo-600 p-1.5 rounded-lg hover:bg-indigo-50 border border-slate-200 transition-colors flex items-center gap-1"
+                        title="Guardar una copia en Mis Apuntes"
+                      >
+                        {copiedPublicId === note.id ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-700 text-[11px] font-bold">Guardado</span>
+                          </>
+                        ) : (
+                          <>
+                            <BookmarkPlus className="w-3.5 h-3.5" />
+                            <span className="text-[11px]">Guardar</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Exam from Note */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onGenerateExamFromNote(note);
+                        }}
+                        className="text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg shadow-2xs transition-all flex items-center gap-1"
+                        title="Generar examen basado en estos apuntes"
+                      >
+                        <Sparkles className="w-3 h-3 text-indigo-200" />
+                        <span>Examen</span>
+                      </button>
+
+                      {/* Author unpublish option */}
+                      {(note.userId === user?.id || note.authorEmail === user?.email) && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleUnpublish(note.id, e)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                          title="Retirar de la comunidad"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================= PUBLISH MODAL ================= */}
+      {publishModalNote && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                  <Globe className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Publicar en la Comunidad
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPublishModalNote(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Tus apuntes <strong className="text-slate-900">"{publishModalNote.title}"</strong> serán publicados de forma abierta en la pestaña de <strong>Comunidad 🌍</strong>. Otros estudiantes podrán leerlos, guardarlos y generar exámenes interactivos.
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Nombre o alias del autor
+                </label>
+                <input
+                  type="text"
+                  value={authorDisplayName}
+                  onChange={(e) => setAuthorDisplayName(e.target.value)}
+                  placeholder="Ej. Alex M., Laura G., o tu alias..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Se mostrará en la tarjeta de los apuntes para que reconozcan tu autoría.
+                </p>
+              </div>
+
+              <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-[11px] text-indigo-900 space-y-1">
+                <span className="font-bold flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-indigo-600" />
+                  Privacidad y control
+                </span>
+                <p className="text-indigo-800">
+                  Podrás retirar tus apuntes de la comunidad en cualquier momento haciendo clic en "Despublicar".
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setPublishModalNote(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPublish}
+                disabled={isSubmittingPublish}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+              >
+                {isSubmittingPublish ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Publicando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>Confirmar y Publicar 🌍</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

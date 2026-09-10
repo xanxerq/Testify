@@ -53,8 +53,8 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
   onOpenJoinRoom,
 }) => {
   // Form state
-  const [subject, setSubject] = useState(initialConfig?.subject || 'Biología Celular');
-  const [topic, setTopic] = useState(initialConfig?.topic || 'La Fotosíntesis y la Respiración Celular');
+  const [subject, setSubject] = useState(initialConfig?.subject || '');
+  const [topic, setTopic] = useState(initialConfig?.topic || '');
   const [level, setLevel] = useState<EducationalLevel>(initialConfig?.level || 'Bachillerato');
   const [difficulty, setDifficulty] = useState<ExamDifficulty>(initialConfig?.difficulty || 'Media');
   const [testCount, setTestCount] = useState<number>(initialConfig?.testCount ?? 5);
@@ -261,12 +261,27 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
 
       {/* Error alert */}
       {validationError && (
-        <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-start gap-3 animate-fadeIn">
-          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold">Revisa los datos del examen:</p>
-            <p className="text-xs sm:text-sm mt-0.5">{validationError}</p>
+        <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">
+                {validationError.includes('503') || validationError.includes('demanda')
+                  ? 'Sobrecarga temporal del modelo IA (503)'
+                  : 'Revisa los datos del examen:'}
+              </p>
+              <p className="text-xs sm:text-sm mt-0.5 leading-relaxed">{validationError}</p>
+            </div>
           </div>
+          {(validationError.includes('503') || validationError.includes('demanda') || validationError.includes('segundos') || validationError.includes('instantes')) && (
+            <button
+              type="button"
+              onClick={() => handleSubmit()}
+              className="self-start sm:self-center px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs whitespace-nowrap shadow-xs transition-colors"
+            >
+              Reintentar ahora
+            </button>
+          )}
         </div>
       )}
 

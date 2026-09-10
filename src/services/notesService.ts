@@ -1,105 +1,33 @@
 import { StudyNote } from '../types';
 import { supabase, isSupabaseConfigured } from './supabase';
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  getDocs,
+  query,
+  orderBy,
+  updateDoc,
+  increment,
+} from 'firebase/firestore';
+import { db } from './firebase';
 
 const STORAGE_KEY_STUDY_NOTES = 'testify_study_notes';
-
-// High-quality default starter note so users can explore immediately
-const STARTER_NOTE: StudyNote = {
-  id: 'starter_note_fotosintesis',
-  userId: 'guest',
-  title: 'Biología Celular: La Fotosíntesis y el Ciclo de Calvin',
-  subject: 'Biología Celular',
-  topic: 'Fotosíntesis y Fijación de Carbono',
-  level: 'Bachillerato',
-  style: 'comprehensive',
-  createdAt: new Date().toISOString(),
-  summary:
-    'Guía completa sobre la fase luminosa en los tilacoides y la fase oscura o Ciclo de Calvin en el estroma, analizando la enzima RuBisCO y la producción de ATP y NADPH.',
-  contentMarkdown: `## 1. Fundamentos de la Fotosíntesis
-La fotosíntesis es el proceso anabólico y autótrofo mediante el cual los organismos fotosintetizadores (plantas, algas y cianobacterias) transforman la **energía luminosa** solar en **energía química** estable (ATP y NADPH), sintetizando glúcidos a partir de $CO_2$ y agua.
-
-> **Ecuación Global General:**  
-> $$6 CO_2 + 6 H_2O + \\text{Luz} \\rightarrow C_6H_{12}O_6 + 6 O_2$$
-
----
-
-## 2. Fase Luminosa (Fotoquímica)
-Ocurre en la **membrana de los tilacoides** del cloroplasto y depende directamente de la luz:
-
-1. **Fotólisis del agua:** En el Fotosistema II (PS II / P680), la luz induce la escisión del agua:
-   $$2 H_2O \\rightarrow 4 H^+ + 4 e^- + O_2$$
-   *(El $O_2$ se libera a la atmósfera como subproducto vital).*
-2. **Cadena de transporte electrónico:** Los electrones excitados viajan por plastoquinona, complejo citocromo $b_6f$ y plastocianina hasta el Fotosistema I (PS I / P700).
-3. **Fotofosforilación (Quimiósmosis):** Se genera un gradiente electroquímico de protones ($H^+$) hacia el lumen tilacoidal. Al salir por la **ATP sintasa**, se sintetiza ATP.
-4. **Reducción del $NADP^+$:** La enzima ferredoxina-NADP+ reductasa produce **NADPH**.
-
-💡 **Consejo para el examen:** Recuerda que en la fase luminosa acíclica se generan **ATP, NADPH y $O_2$**, mientras que en la fotofosforilación cíclica solo se genera ATP (no se desprende oxígeno ni se produce NADPH).
-
----
-
-## 3. Fase Oscura o Biosintética (Ciclo de Calvin)
-Ocurre en el **estroma** del cloroplasto y no requiere luz directa, pero necesita el ATP y NADPH producidos en la fase fotoquímica:
-
-### Etapas del Ciclo:
-1. **Fijación del Carbono:** La enzima **RuBisCO** (Ribulosa-1,5-bisfosfato carboxilasa/oxigenasa) cataliza la unión de $CO_2$ con la ribulosa-1,5-bisfosfato ($RuBP$), produciendo 3-fosfoglicerato ($3-PGA$).
-2. **Reducción:** El $3-PGA$ se fosforila y reduce a **Gliceraldehído-3-fosfato (G3P)** consumiendo ATP y NADPH.
-3. **Regeneración:** De cada 6 moléculas de G3P formadas, 1 molécula neta sale para la biosíntesis de glucosa y sacarosa, mientras que las otras 5 se utilizan para regenerar la $RuBP$ consumiendo más ATP.
-
-⚠️ **Error frecuente:** La "fase oscura" no ocurre obligatoriamente de noche. Muchas enzimas del ciclo de Calvin se activan de día mediante el sistema ferredoxina-tiorredoxina regulado por luz.`,
-  keyConcepts: [
-    {
-      term: 'RuBisCO',
-      definition:
-        'Enzima estromática fundamental que cataliza la fijación de CO2 en el ciclo de Calvin. Es la proteína más abundante del planeta.',
-      exampleOrNote: 'Posee actividad oxigenasa indeseada que da lugar a la fotorrespiración en climas cálidos.',
-    },
-    {
-      term: 'Fotólisis del Agua',
-      definition:
-        'Ruptura de la molécula de agua en el Fotosistema II por acción de la energía lumínica, liberando electrones, protones y oxígeno gaseoso.',
-      exampleOrNote: 'La fuente del O2 desprendido es el H2O, no el CO2.',
-    },
-    {
-      term: 'Tilacoide vs. Estroma',
-      definition:
-        'El tilacoide es el compartimento membranoso donde ocurre la fase luminosa; el estroma es el fluido acuoso donde se realiza el Ciclo de Calvin.',
-    },
-    {
-      term: 'NADPH y ATP',
-      definition:
-        'Transportadores energéticos generados en la membrana tilacoidal que impulsan las reacciones biosintéticas del estroma.',
-    },
-  ],
-  quickReviewQuestions: [
-    {
-      question: '¿De dónde procede exactamente el oxígeno que las plantas liberan a la atmósfera?',
-      answer:
-        'Procede de la fotólisis (ruptura) de las moléculas de agua (H2O) en el Fotosistema II durante la fase luminosa, no del CO2.',
-    },
-    {
-      question: '¿Qué productos de la fase luminosa son imprescindibles para que funcione el Ciclo de Calvin?',
-      answer:
-        'El ATP (fuente de energía libre) y el NADPH (poder reductor), ambos generados en la membrana del tilacoide.',
-    },
-    {
-      question: '¿Por qué la enzima RuBisCO es clave en la biosfera?',
-      answer:
-        'Porque es la principal encargada de fijar el carbono inorgánico (CO2) convirtiéndolo en materia orgánica asimilable por los seres vivos.',
-    },
-  ],
-  tags: ['Biología', 'Metabolismo', 'Fotosíntesis', 'Bachillerato'],
-};
+const STORAGE_KEY_PUBLISHED_CACHE = 'testify_published_notes_cache';
+const PUBLISHED_COLLECTION = 'published_notes';
 
 export const notesService = {
-  // Synchronous read from localStorage
+  // Synchronous read from localStorage (clean, no automatic biology seeding)
   getNotes(userId?: string): StudyNote[] {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_STUDY_NOTES);
       let list: StudyNote[] = raw ? JSON.parse(raw) : [];
 
-      // If empty on first load, seed with starter note
-      if (list.length === 0) {
-        list = [STARTER_NOTE];
+      // Clean up any legacy starter biology note so it never forces itself onto the user
+      const hadStarter = list.some((n) => n.id === 'starter_note_fotosintesis');
+      if (hadStarter) {
+        list = list.filter((n) => n.id !== 'starter_note_fotosintesis');
         localStorage.setItem(STORAGE_KEY_STUDY_NOTES, JSON.stringify(list));
       }
 
@@ -110,11 +38,11 @@ export const notesService = {
       return list.filter((n) => !n.userId || n.userId === userId || n.userId === 'guest');
     } catch (e) {
       console.warn('Error reading notes from localStorage:', e);
-      return [STARTER_NOTE];
+      return [];
     }
   },
 
-  // Save or update a note
+  // Save or update a note in user's personal collection
   async saveNote(note: StudyNote, userId?: string): Promise<StudyNote> {
     const updatedNote: StudyNote = {
       ...note,
@@ -136,6 +64,16 @@ export const notesService = {
 
       localStorage.setItem(STORAGE_KEY_STUDY_NOTES, JSON.stringify(newList));
 
+      // If this note was previously published, update the published version in Firestore too
+      if (updatedNote.isPublished) {
+        try {
+          const docRef = doc(db, PUBLISHED_COLLECTION, updatedNote.id);
+          await setDoc(docRef, updatedNote, { merge: true });
+        } catch (fErr) {
+          console.warn('Error updating published note in Firestore:', fErr);
+        }
+      }
+
       // Attempt background save to Supabase if configured
       if (isSupabaseConfigured() && userId && userId !== 'guest') {
         try {
@@ -151,7 +89,6 @@ export const notesService = {
             created_at: updatedNote.createdAt,
           });
         } catch (dbErr) {
-          // Table may not exist yet in Supabase, local persistence is guaranteed
           console.debug('Supabase notes sync note:', dbErr);
         }
       }
@@ -163,12 +100,22 @@ export const notesService = {
     }
   },
 
-  // Delete a note
+  // Delete a note from user collection (and unpublish from community if it was published)
   async deleteNote(id: string): Promise<boolean> {
     try {
       const currentNotes = this.getNotes();
+      const targetNote = currentNotes.find((n) => n.id === id);
       const filtered = currentNotes.filter((n) => n.id !== id);
       localStorage.setItem(STORAGE_KEY_STUDY_NOTES, JSON.stringify(filtered));
+
+      // Remove from published collection if it was public
+      if (targetNote?.isPublished) {
+        try {
+          await deleteDoc(doc(db, PUBLISHED_COLLECTION, id));
+        } catch (fErr) {
+          console.warn('Error removing published note from Firestore:', fErr);
+        }
+      }
 
       if (isSupabaseConfigured()) {
         try {
@@ -189,5 +136,153 @@ export const notesService = {
   getNoteById(id: string): StudyNote | undefined {
     const all = this.getNotes();
     return all.find((n) => n.id === id);
+  },
+
+  // Publicar un apunte en la comunidad (Firestore)
+  async publishNote(
+    note: StudyNote,
+    authorName: string,
+    authorEmail?: string
+  ): Promise<StudyNote> {
+    const publishedNote: StudyNote = {
+      ...note,
+      isPublished: true,
+      publishedAt: note.publishedAt || new Date().toISOString(),
+      authorName: authorName.trim() || note.authorName || 'Estudiante',
+      authorEmail: authorEmail || note.authorEmail,
+      likesCount: note.likesCount ?? 0,
+      downloadsCount: note.downloadsCount ?? 0,
+    };
+
+    // 1. Guardar en Firestore para que sea visible por toda la comunidad
+    try {
+      const docRef = doc(db, PUBLISHED_COLLECTION, publishedNote.id);
+      await setDoc(docRef, publishedNote);
+    } catch (err) {
+      console.warn('Firestore publish error, caching locally:', err);
+    }
+
+    // 2. Actualizar estado local
+    await this.saveNote(publishedNote);
+
+    // 3. Actualizar caché de notas públicas locales
+    try {
+      const cached = this.getCachedPublishedNotes();
+      const updatedCache = [
+        publishedNote,
+        ...cached.filter((n) => n.id !== publishedNote.id),
+      ];
+      localStorage.setItem(STORAGE_KEY_PUBLISHED_CACHE, JSON.stringify(updatedCache));
+    } catch (e) {
+      console.warn('Cache update error:', e);
+    }
+
+    return publishedNote;
+  },
+
+  // Despublicar un apunte (retirarlo de la comunidad)
+  async unpublishNote(noteId: string): Promise<StudyNote | null> {
+    const currentNotes = this.getNotes();
+    const target = currentNotes.find((n) => n.id === noteId);
+    if (!target) return null;
+
+    const unpublishedNote: StudyNote = {
+      ...target,
+      isPublished: false,
+    };
+
+    // 1. Eliminar de Firestore
+    try {
+      const docRef = doc(db, PUBLISHED_COLLECTION, noteId);
+      await deleteDoc(docRef);
+    } catch (err) {
+      console.warn('Firestore unpublish error:', err);
+    }
+
+    // 2. Actualizar en colección personal
+    await this.saveNote(unpublishedNote);
+
+    // 3. Retirar de caché pública
+    try {
+      const cached = this.getCachedPublishedNotes();
+      const updatedCache = cached.filter((n) => n.id !== noteId);
+      localStorage.setItem(STORAGE_KEY_PUBLISHED_CACHE, JSON.stringify(updatedCache));
+    } catch (e) {
+      console.warn('Cache update error:', e);
+    }
+
+    return unpublishedNote;
+  },
+
+  // Leer notas públicas de la caché local para renderizado instantáneo
+  getCachedPublishedNotes(): StudyNote[] {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_PUBLISHED_CACHE);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  // Obtener todos los apuntes publicados en la comunidad desde Firestore
+  async getPublishedNotes(): Promise<StudyNote[]> {
+    try {
+      const q = query(
+        collection(db, PUBLISHED_COLLECTION),
+        orderBy('publishedAt', 'desc')
+      );
+      const snapshot = await getDocs(q);
+
+      const notes: StudyNote[] = [];
+      snapshot.forEach((d) => {
+        notes.push(d.data() as StudyNote);
+      });
+
+      // Guardar en caché local para acceso offline y mayor velocidad
+      localStorage.setItem(STORAGE_KEY_PUBLISHED_CACHE, JSON.stringify(notes));
+      return notes;
+    } catch (err) {
+      console.warn('Error fetching published notes from Firestore, using cache:', err);
+      return this.getCachedPublishedNotes();
+    }
+  },
+
+  // Dar 'Like' o recomendar un apunte publicado
+  async likePublishedNote(noteId: string): Promise<number> {
+    try {
+      const docRef = doc(db, PUBLISHED_COLLECTION, noteId);
+      await updateDoc(docRef, {
+        likesCount: increment(1),
+      });
+    } catch (err) {
+      console.warn('Error incrementing likes in Firestore:', err);
+    }
+
+    // Actualizar en caché local
+    const cached = this.getCachedPublishedNotes();
+    let newLikes = 1;
+    const updated = cached.map((n) => {
+      if (n.id === noteId) {
+        newLikes = (n.likesCount || 0) + 1;
+        return { ...n, likesCount: newLikes };
+      }
+      return n;
+    });
+    localStorage.setItem(STORAGE_KEY_PUBLISHED_CACHE, JSON.stringify(updated));
+
+    return newLikes;
+  },
+
+  // Guardar una copia de un apunte de la comunidad en "Mis Apuntes"
+  async copyPublishedNoteToMyNotes(publishedNote: StudyNote, userId?: string): Promise<StudyNote> {
+    const clonedNote: StudyNote = {
+      ...publishedNote,
+      id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      userId: userId || 'guest',
+      title: `${publishedNote.title} (Copia)`,
+      createdAt: new Date().toISOString(),
+      isPublished: false,
+    };
+    return await this.saveNote(clonedNote, userId);
   },
 };

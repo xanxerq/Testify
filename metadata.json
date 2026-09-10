@@ -1,6 +1,6 @@
 {
   "name": "Testify - Generador de Exámenes con IA",
-  "description": "Genera exámenes y apuntes con IA desde fotos o PDFs, compite con amigos en salas en tiempo real y descarga informes en PDF con correcciones y nota final.",
+  "description": "Genera exámenes y apuntes con IA desde fotos o PDFs, publica apuntes en la comunidad abierta, compite en salas multijugador y descarga informes en PDF con correcciones.",
   "requestFramePermissions": [
     "camera"
   ],

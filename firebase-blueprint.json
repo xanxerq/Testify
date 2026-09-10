@@ -223,6 +223,77 @@
         }
       },
       "required": ["id", "code", "hostId", "hostName", "status", "createdAt", "examTitle", "subject", "topic"]
+    },
+    "PublishedNote": {
+      "title": "PublishedNote",
+      "description": "Public community study notes shared by students and teachers",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique note ID",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Author user ID",
+          "maxLength": 128
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Author display name",
+          "maxLength": 100
+        },
+        "authorEmail": {
+          "type": "string",
+          "description": "Author email",
+          "maxLength": 150
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of notes",
+          "maxLength": 200
+        },
+        "subject": {
+          "type": "string",
+          "description": "Academic subject",
+          "maxLength": 100
+        },
+        "topic": {
+          "type": "string",
+          "description": "Specific syllabus topic",
+          "maxLength": 150
+        },
+        "level": {
+          "type": "string",
+          "description": "Educational level",
+          "maxLength": 50
+        },
+        "style": {
+          "type": "string",
+          "description": "Notes style (comprehensive, outline, etc.)",
+          "maxLength": 50
+        },
+        "summary": {
+          "type": "string",
+          "description": "Pedagogical summary of the notes",
+          "maxLength": 1000
+        },
+        "contentMarkdown": {
+          "type": "string",
+          "description": "Full Markdown text content of the notes"
+        },
+        "publishedAt": {
+          "type": "string",
+          "description": "ISO publication timestamp",
+          "maxLength": 50
+        },
+        "likesCount": {
+          "type": "number",
+          "description": "Total community likes/stars"
+        }
+      },
+      "required": ["id", "userId", "authorName", "title", "subject", "topic", "level", "summary", "contentMarkdown", "publishedAt"]
     }
   },
   "firestore": {
@@ -241,6 +312,10 @@
     "/exam_rooms/{roomId}": {
       "schema": "ExamRoom",
       "description": "Multiplayer live exam rooms for friends to compete and see who scores best."
+    },
+    "/published_notes/{noteId}": {
+      "schema": "PublishedNote",
+      "description": "Public community study notes shared by students and teachers. Anyone can read; authors can manage their own."
     }
   }
 }
