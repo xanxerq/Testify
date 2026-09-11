@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   AlertCircle,
   BookMarked,
+  Bot,
   Camera,
   Check,
   Clock,
@@ -41,6 +42,7 @@ interface ExamSetupFormProps {
   onOpenJoinRoom?: () => void;
   onNavigateToHomework?: () => void;
   onNavigateToFlashcards?: (subject?: string, topic?: string, level?: EducationalLevel) => void;
+  onNavigateToChat?: () => void;
 }
 
 const EDUCATIONAL_LEVELS: { level: EducationalLevel; label: string; desc: string }[] = [
@@ -63,6 +65,7 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
   onOpenJoinRoom,
   onNavigateToHomework,
   onNavigateToFlashcards,
+  onNavigateToChat,
 }) => {
   // Form state
   const [subject, setSubject] = useState(initialConfig?.subject || '');
@@ -314,22 +317,41 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
           Crea exámenes a medida y simulacros oficiales con IA pedagógica. Elige tu etapa (<strong className="font-semibold text-slate-900">ESO</strong>, <strong className="font-semibold text-slate-900">Bachillerato</strong> o <strong className="font-semibold text-slate-900">Preparación PAU / EBAU</strong>), selecciona una de las materias del currículo oficial de España o sube <strong className="font-semibold text-slate-900">fotos de tus apuntes y PDF</strong>.
         </p>
 
-        {/* Quick Shortcut to Homework Solver */}
-        {onNavigateToHomework && (
-          <div className="mt-4 inline-flex flex-wrap items-center justify-center gap-2 p-1.5 sm:p-2 pr-3 sm:pr-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 text-xs sm:text-sm text-emerald-950 shadow-xs">
-            <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white font-extrabold text-[11px] uppercase tracking-wide">
-              Nuevo
-            </span>
-            <span>¿Tienes ejercicios o deberes difíciles? Sube su foto y te lo resuelve paso a paso con explicación.</span>
-            <button
-              type="button"
-              onClick={onNavigateToHomework}
-              className="font-bold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 flex items-center gap-0.5 transition-colors ml-1"
-            >
-              <span>Ir a Resolver Deberes →</span>
-            </button>
-          </div>
-        )}
+        {/* Quick Shortcuts */}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+          {onNavigateToChat && (
+            <div className="inline-flex flex-wrap items-center justify-center gap-2 p-1.5 sm:p-2 pr-3 sm:pr-4 rounded-2xl bg-indigo-50/90 border border-indigo-200/80 text-xs sm:text-sm text-indigo-950 shadow-xs">
+              <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white font-extrabold text-[11px] uppercase tracking-wide flex items-center gap-1">
+                <Bot className="w-3 h-3" />
+                <span>Chatbot IA</span>
+              </span>
+              <span>¿Tienes alguna duda sin fotos? Pregúntale a nuestro profesor IA en directo.</span>
+              <button
+                type="button"
+                onClick={onNavigateToChat}
+                className="font-bold text-indigo-700 hover:text-indigo-900 underline underline-offset-2 flex items-center gap-0.5 transition-colors ml-1"
+              >
+                <span>Preguntar al Chatbot →</span>
+              </button>
+            </div>
+          )}
+
+          {onNavigateToHomework && (
+            <div className="inline-flex flex-wrap items-center justify-center gap-2 p-1.5 sm:p-2 pr-3 sm:pr-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 text-xs sm:text-sm text-emerald-950 shadow-xs">
+              <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white font-extrabold text-[11px] uppercase tracking-wide">
+                Paso a Paso
+              </span>
+              <span>¿Tienes ejercicios o deberes difíciles? Sube su foto para resolverlos.</span>
+              <button
+                type="button"
+                onClick={onNavigateToHomework}
+                className="font-bold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 flex items-center gap-0.5 transition-colors ml-1"
+              >
+                <span>Ir a Resolver Deberes →</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Error alert */}
@@ -412,11 +434,7 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
                   onClick={() => {
                     setSelectedStage(stg.id);
                     setLevel(stg.defaultLevel);
-                    // Seleccionar la primera materia de esta etapa para que se muestre de inmediato
-                    const stageFirstSub = QUICK_SUBJECTS.find((qs) => qs.stage === stg.id);
-                    if (stageFirstSub) {
-                      setSelectedQuickSubjectId(stageFirstSub.id);
-                    }
+                    setSelectedQuickSubjectId(null);
                     if (validationError) setValidationError(null);
                   }}
                   className={`relative flex flex-col items-start text-left p-3 sm:p-3.5 rounded-xl transition-all ${
@@ -450,10 +468,9 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
           {/* Chips y Tarjetas con las Materias Oficiales de la Etapa Seleccionada */}
           {(() => {
             const stageSubjects = QUICK_SUBJECTS.filter((qs) => qs.stage === selectedStage);
-            const activeQs =
-              stageSubjects.find((qs) => qs.id === selectedQuickSubjectId) ||
-              stageSubjects.find((qs) => qs.name.toLowerCase() === subject.toLowerCase()) ||
-              stageSubjects[0];
+            const activeQs = selectedQuickSubjectId
+              ? stageSubjects.find((qs) => qs.id === selectedQuickSubjectId)
+              : null;
 
             return (
               <div className="space-y-4">

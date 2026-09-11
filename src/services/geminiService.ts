@@ -1274,4 +1274,76 @@ Devuelve únicamente el objeto JSON válido.`;
       createdAt: new Date().toISOString(),
     };
   },
+
+  /**
+   * Envía una pregunta o conversación al Chatbot IA pedagógico
+   * Responde directamente sin requerir fotos ni archivos.
+   */
+  async askChatbot(
+    messages: Array<{ role: 'user' | 'model'; content: string }>,
+    subject?: string,
+    level?: string,
+    topic?: string
+  ): Promise<string> {
+    // 1. First try server-side /api/chat route
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, subject, level, topic }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.reply) return data.reply;
+      }
+    } catch (apiErr) {
+      console.warn('Backend /api/chat call failed, falling back to client-side SDK:', apiErr);
+    }
+
+    // 2. Client-side fallback if backend is unavailable
+    const systemPrompt = `Eres el Tutor IA y Profesor Particular de Testify, un asistente pedagógico de excelencia.
+Tu objetivo es responder de forma clara, amena, rigurosa y muy didáctica a cualquier pregunta o duda académica de los estudiantes, SIN necesidad de que adjunten fotos.
+Idioma obligatorio: Español.
+${subject ? `- Materia/Asignatura: "${subject}"` : '- Materia: General'}
+${level ? `- Nivel: "${level}"` : ''}
+${topic ? `- Tema: "${topic}"` : ''}
+
+DIRECTRICES:
+1. Responde con paciencia pedagógica, estructurando las explicaciones paso a paso.
+2. Si hay fórmulas matemáticas, exprésalas con claridad y define los términos.
+3. Proporciona ejemplos prácticos o analogías cotidianas cuando faciliten la comprensión.
+4. Usa formato Markdown limpio (títulos con ##, negritas, listas, notas destacadas con 💡).`;
+
+    const contents = messages.map((m) => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }],
+    }));
+
+    try {
+      const ai = getGeminiClient();
+      const response = await generateContentWithFallback(ai, {
+        primaryModel: GEMINI_TEXT_MODEL,
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.4,
+          maxOutputTokens: 4096,
+        },
+      });
+
+      return response.text || 'Respuesta generada con éxito.';
+    } catch (primaryErr: any) {
+      const fallbackKey = getFallbackApiKey();
+      if (fallbackKey) {
+        const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+        return await executeFallbackGeneration({
+          apiKey: fallbackKey,
+          systemPrompt,
+          userPromptText: lastUser,
+        });
+      }
+      throw new Error(formatGeminiErrorMessage(primaryErr));
+    }
+  },
 };

@@ -566,6 +566,93 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
   }
 });
 
+// Endpoint: AI Study Chatbot (answers academic questions without requiring photos)
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { messages = [], subject = '', level = '', topic = '' } = req.body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'La conversación debe incluir al menos un mensaje.' });
+    }
+
+    const ai = getGemini();
+
+    const systemPrompt = `Eres el Tutor IA y Profesor Particular de Testify, un asistente pedagógico de excelencia.
+Tu objetivo es responder de forma clara, amena, rigurosa y muy didáctica a cualquier pregunta o duda académica de los estudiantes, SIN necesidad de que adjunten fotos.
+Idioma obligatorio: Español (salvo que pregunten sobre traducción o aprendizaje de idiomas).
+
+Contexto del estudiante:
+${subject ? `- Materia/Asignatura: "${subject}"` : '- Materia: General / Cualquier asignatura'}
+${level ? `- Nivel Educativo: "${level}"` : '- Nivel: Bachillerato / ESO'}
+${topic ? `- Tema de estudio: "${topic}"` : ''}
+
+DIRECTRICES PEDAGÓGICAS:
+1. Responde directamente a la duda planteada con tono empático, paciente y motivador.
+2. Explica paso a paso cómo se razona, calcula o comprende el concepto.
+3. Si hay fórmulas matemáticas, físicas o químicas, exprésalas con claridad y define cada una de las variables.
+4. Proporciona ejemplos prácticos o analogías cotidianas cuando faciliten la comprensión.
+5. Usa formato Markdown limpio y atractivo (títulos con ## o ###, listas, negritas para términos clave, bloques de código o notas destacadas con 💡).
+6. Al final de explicaciones complejas, puedes incluir una breve pregunta de comprobación (Active Recall) o un consejo para recordar el concepto en el examen.`;
+
+    // Convert messages to Gemini contents structure
+    const contents: any[] = messages.map((m: any) => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content || m.text || '' }],
+    }));
+
+    let responseText = '';
+
+    try {
+      const response = await generateContentWithFallback(ai, {
+        primaryModel: GEMINI_TEXT_MODEL,
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.4,
+          maxOutputTokens: 4096,
+        },
+      });
+      responseText = response.text || '';
+    } catch (primaryErr: any) {
+      console.warn('[Server] Error en Gemini Chat, intentando fallback...', primaryErr?.message);
+      const fallbackKey = process.env.VITE_FALLBACK_API_KEY || process.env.FALLBACK_API_KEY;
+      if (fallbackKey) {
+        // Build prompt from last user message and history
+        const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+        const historyContext = messages
+          .slice(-6)
+          .map((m) => `${m.role === 'user' ? 'Alumno' : 'Tutor'}: ${m.content}`)
+          .join('\n');
+
+        const fallbackPrompt = `${historyContext}\n\nPor favor, responde a la última duda del alumno de forma pedagógica y completa.`;
+
+        responseText = await callFallbackProviderServer({
+          apiKey: fallbackKey,
+          systemPrompt,
+          userPromptText: fallbackPrompt,
+        });
+      } else {
+        throw primaryErr;
+      }
+    }
+
+    return res.json({
+      success: true,
+      reply: responseText || 'Lo siento, no pude formular una respuesta en este momento. Inténtalo de nuevo.',
+    });
+  } catch (err: any) {
+    console.error('Error in /api/chat:', err);
+    let errorMsg = err.message || 'Error al comunicarse con el chatbot IA.';
+    if (isHighDemandOrTransientError(err)) {
+      errorMsg = 'El servicio de IA está experimentando alta demanda. Por favor, vuelve a enviar tu mensaje en unos segundos.';
+    }
+    return res.status(500).json({
+      error: 'Error del servidor al procesar la respuesta del chatbot',
+      message: errorMsg,
+    });
+  }
+});
+
 // Start server and attach Vite middleware in development
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {

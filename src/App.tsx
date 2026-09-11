@@ -9,6 +9,7 @@ import { ExamHistory } from './components/ExamHistory';
 import { StudyNotesView } from './components/StudyNotesView';
 import { HomeworkSolverView } from './components/HomeworkSolverView';
 import { FlashcardsView } from './components/FlashcardsView';
+import { ChatbotView } from './components/ChatbotView';
 import { RoomLobbyModal } from './components/RoomLobbyModal';
 import { authService } from './services/authService';
 import { geminiService } from './services/geminiService';
@@ -29,9 +30,13 @@ import {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => authService.getCurrentUser());
-  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards'>('create');
+  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat'>('create');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+
+  // Chatbot state
+  const [chatInitialSubject, setChatInitialSubject] = useState<string>('');
+  const [chatInitialTopic, setChatInitialTopic] = useState<string>('');
 
   // Flashcards study mode states
   const [flashcardsSourceExam, setFlashcardsSourceExam] = useState<Exam | null>(null);
@@ -400,6 +405,7 @@ export default function App() {
             }}
             onNavigateToHomework={() => setActiveView('homework')}
             onNavigateToFlashcards={handleNavigateToFlashcards}
+            onNavigateToChat={() => setActiveView('chat')}
           />
         )}
 
@@ -423,6 +429,40 @@ export default function App() {
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             onOpenAuthRequired={() => setIsAuthModalOpen(true)}
+            onOpenChatbot={(subj, top) => {
+              if (subj) setChatInitialSubject(subj);
+              if (top) setChatInitialTopic(top);
+              setActiveView('chat');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        )}
+
+        {activeView === 'chat' && (
+          <ChatbotView
+            user={user}
+            initialSubject={chatInitialSubject}
+            initialTopic={chatInitialTopic}
+            onNavigateToFlashcards={(subj, top, lvl) => {
+              setFlashcardsSourceExam(null);
+              setFlashcardsInitialTopic({
+                subject: subj || '',
+                topic: top || '',
+                level: lvl || 'Bachillerato',
+              });
+              setActiveView('flashcards');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onNavigateToExam={(subj, top) => {
+              if (subj || top) {
+                setPresetExamConfig({
+                  subject: subj,
+                  topic: top,
+                });
+              }
+              setActiveView('create');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         )}
 

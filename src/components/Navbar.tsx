@@ -1,11 +1,11 @@
 import React from 'react';
-import { BookOpen, Database, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, Sparkles, User as UserIcon, Users } from 'lucide-react';
+import { BookOpen, Bot, Database, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, Sparkles, User as UserIcon, Users } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
   user: User | null;
-  activeView: 'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards';
-  onNavigate: (view: 'create' | 'history' | 'notes' | 'homework' | 'flashcards') => void;
+  activeView: 'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat';
+  onNavigate: (view: 'create' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat') => void;
   onOpenAuth: () => void;
   onOpenAdmin: () => void;
   onOpenRoomsModal: () => void;
@@ -89,6 +89,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Sparkles className="w-4 h-4 text-amber-600" />
             <span className="hidden xs:inline">Flashcards</span>
+          </button>
+
+          <button
+            id="nav-btn-chat"
+            onClick={() => onNavigate('chat')}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeView === 'chat'
+                ? 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200'
+                : 'text-slate-600 hover:text-indigo-700 hover:bg-indigo-50/60'
+            }`}
+            title="Chatbot IA para responder dudas y preguntas directamente sin subir fotos"
+          >
+            <Bot className="w-4 h-4 text-indigo-600" />
+            <span className="hidden xs:inline">Chatbot IA</span>
           </button>
 
           <button

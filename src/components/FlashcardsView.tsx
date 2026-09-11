@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import Markdown from 'react-markdown';
 import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  Bot,
   Check,
   CheckCircle2,
   ChevronLeft,
@@ -11,15 +13,18 @@ import {
   HelpCircle,
   Layers,
   Lightbulb,
+  MessageSquare,
   Plus,
   RotateCcw,
   RotateCw,
+  Send,
   Shuffle,
   Sparkles,
   Trophy,
   Wand2,
+  X,
 } from 'lucide-react';
-import { EducationalLevel, Exam, Flashcard, FlashcardDeck, UploadedMaterial, User } from '../types';
+import { EducationalLevel, Exam, Flashcard, FlashcardDeck, User } from '../types';
 import { geminiService } from '../services/geminiService';
 
 interface FlashcardsViewProps {
@@ -31,7 +36,18 @@ interface FlashcardsViewProps {
   onNavigateToExam: (subject?: string, topic?: string, level?: EducationalLevel) => void;
   user?: User | null;
   onOpenAuthRequired?: () => void;
+  onOpenChatbot?: (subject?: string, topic?: string) => void;
 }
+
+const EDUCATIONAL_LEVELS: EducationalLevel[] = [
+  'Secundaria (ESO)',
+  'Bachillerato',
+  'Preparación PAU / EBAU',
+  'Universidad / Grado',
+  'Formación Profesional',
+  'Primaria',
+  'Máster / Oposiciones',
+];
 
 export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   initialDeck,
@@ -41,8 +57,9 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   initialLevel,
   onNavigateToExam,
   user,
+  onOpenChatbot,
 }) => {
-  // Deck state: empty by default unless an initialDeck or initialExam is provided
+  // Deck state: completely empty (null) by default unless passed from an active exam
   const [deck, setDeck] = useState<FlashcardDeck | null>(() => {
     if (initialDeck && initialDeck.cards.length > 0) return initialDeck;
     if (initialExam && initialExam.questions.length > 0) {
@@ -56,12 +73,21 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   const [showHint, setShowHint] = useState(false);
   const [masteredCardIds, setMasteredCardIds] = useState<Set<string>>(new Set());
 
-  // Form state for creating a deck
-  const [genSubject, setGenSubject] = useState('');
-  const [genTopic, setGenTopic] = useState('');
-  const [genLevel, setGenLevel] = useState<EducationalLevel>('Bachillerato');
+  // Form state for creating a deck - completely empty inputs for the user to fill
+  const [subject, setSubject] = useState(initialSubject || '');
+  const [topic, setTopic] = useState(initialTopic || '');
+  const [level, setLevel] = useState<EducationalLevel>(initialLevel || 'Bachillerato');
+  const [cardCount, setCardCount] = useState(8);
+  const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
-  const [genError, setGenError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Integrated Chatbot modal / side panel state
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'model'; content: string }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (initialDeck && initialDeck.cards.length > 0) {
@@ -81,19 +107,19 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   }, [initialDeck, initialExam]);
 
   useEffect(() => {
-    if (initialSubject) setGenSubject(initialSubject);
-    if (initialTopic) setGenTopic(initialTopic);
-    if (initialLevel) setGenLevel(initialLevel);
+    if (initialSubject) setSubject(initialSubject);
+    if (initialTopic) setTopic(initialTopic);
+    if (initialLevel) setLevel(initialLevel);
   }, [initialSubject, initialTopic, initialLevel]);
 
   const cards = deck?.cards || [];
   const currentCard: Flashcard | undefined = cards[currentIndex];
 
-  // Keyboard navigation for space bar to flip, left/right arrow to navigate
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      if (!deck || cards.length === 0) return;
 
       if (e.code === 'Space') {
         e.preventDefault();
@@ -107,7 +133,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, cards.length]);
+  }, [currentIndex, cards.length, deck]);
 
   const handleNextCard = () => {
     if (currentIndex < cards.length - 1) {
@@ -132,7 +158,6 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
         next.delete(cardId);
       } else {
         next.add(cardId);
-        // Automatically advance to next card when marked as mastered
         if (currentIndex < cards.length - 1) {
           setTimeout(() => handleNextCard(), 300);
         }
@@ -157,23 +182,32 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
     setMasteredCardIds(new Set());
   };
 
-  const handleGenerateDeck = async (e: React.FormEvent) => {
+  const handleCreateDeck = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!genSubject.trim() || !genTopic.trim()) {
-      setGenError('Por favor, indica la asignatura y el tema a repasar.');
+    const cleanSubject = subject.trim();
+    const cleanTopic = topic.trim();
+
+    if (!cleanSubject) {
+      setFormError('Por favor, escribe la asignatura.');
+      return;
+    }
+
+    if (!cleanTopic) {
+      setFormError('Por favor, indica el tema o contenido que quieres estudiar.');
       return;
     }
 
     try {
       setIsGeneratingAi(true);
-      setGenError(null);
+      setFormError(null);
 
       const newDeck = await geminiService.generateFlashcards(
-        genSubject.trim(),
-        genTopic.trim(),
-        genLevel,
+        cleanSubject,
+        cleanTopic,
+        level,
         [],
-        8
+        cardCount,
+        additionalInstructions.trim()
       );
 
       setDeck(newDeck);
@@ -181,12 +215,49 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
       setIsFlipped(false);
       setShowHint(false);
       setMasteredCardIds(new Set());
-      setIsGeneratingModalOpen(false);
     } catch (err: any) {
       console.error('Error generating flashcards:', err);
-      setGenError(err.message || 'Error al generar las tarjetas con IA.');
+      setFormError(err.message || 'Error al generar las tarjetas con IA.');
     } finally {
       setIsGeneratingAi(false);
+    }
+  };
+
+  // Quick doubt question to integrated chatbot
+  const handleSendChatQuestion = async (queryText?: string) => {
+    const text = (queryText || chatInput).trim();
+    if (!text || isChatLoading) return;
+
+    setChatInput('');
+    const userMsg = { id: `u_${Date.now()}`, role: 'user' as const, content: text };
+    const nextList = [...chatMessages, userMsg];
+    setChatMessages(nextList);
+    setIsChatLoading(true);
+
+    try {
+      const botReply = await geminiService.askChatbot(
+        nextList.map((m) => ({ role: m.role, content: m.content })),
+        deck?.subject || subject,
+        deck?.level || level,
+        deck?.topic || topic
+      );
+
+      setChatMessages((prev) => [
+        ...prev,
+        { id: `b_${Date.now()}`, role: 'model' as const, content: botReply },
+      ]);
+    } catch (err: any) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `err_${Date.now()}`,
+          role: 'model' as const,
+          content: 'Lo siento, no pude procesar la duda en este momento. Inténtalo de nuevo.',
+        },
+      ]);
+    } finally {
+      setIsChatLoading(false);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     }
   };
 
@@ -194,12 +265,180 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   const progressPercent = cards.length > 0 ? Math.round((masteredCount / cards.length) * 100) : 0;
   const isCurrentMastered = currentCard ? masteredCardIds.has(currentCard.id) : false;
 
+  // VIEW 1: Empty state -> Clean form to create deck
+  if (!deck || deck.cards.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12 animate-fadeIn">
+        <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-sm space-y-6">
+          {/* Header */}
+          <div className="text-center pb-2 border-b border-slate-100">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center mx-auto mb-3 shadow-md shadow-amber-200">
+              <Sparkles className="w-7 h-7" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              Crear Mazo de Flashcards
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-md mx-auto">
+              Escribe tu asignatura y tema para generar tarjetas interactivas de estudio activo y memoria espaciada con IA.
+            </p>
+          </div>
+
+          {formError && (
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium">
+              {formError}
+            </div>
+          )}
+
+          {/* Creation Form */}
+          <form onSubmit={handleCreateDeck} className="space-y-5">
+            {/* Asignatura */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Materia / Asignatura <span className="text-rose-500">*</span>
+              </label>
+              <input
+                id="flashcard-subject-input"
+                type="text"
+                required
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Escribe la asignatura (ej. Biología, Historia, Matemáticas, Filosofía...)"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all"
+              />
+            </div>
+
+            {/* Tema */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Tema específico a repasar <span className="text-rose-500">*</span>
+              </label>
+              <input
+                id="flashcard-topic-input"
+                type="text"
+                required
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder="Escribe el tema (ej. La Célula, La Segunda Guerra Mundial, Sintaxis, Derivadas...)"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all"
+              />
+            </div>
+
+            {/* Nivel Educativo y Cantidad de tarjetas */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Nivel Educativo
+                </label>
+                <select
+                  value={level}
+                  onChange={(e) => setLevel(e.target.value as EducationalLevel)}
+                  className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                >
+                  {EDUCATIONAL_LEVELS.map((lvl) => (
+                    <option key={lvl} value={lvl}>
+                      {lvl}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Cantidad de Tarjetas
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[5, 8, 10, 15].map((cnt) => (
+                    <button
+                      key={cnt}
+                      type="button"
+                      onClick={() => setCardCount(cnt)}
+                      className={`py-2.5 text-xs font-bold rounded-xl border transition-all ${
+                        cardCount === cnt
+                          ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                          : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      {cnt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Instrucciones opcionales */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Instrucciones adicionales o enfoque (Opcional)
+              </label>
+              <input
+                type="text"
+                value={additionalInstructions}
+                onChange={(e) => setAdditionalInstructions(e.target.value)}
+                placeholder="Ej. Enfocar en fechas clave, fórmulas prácticas o definiciones de examen..."
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+              />
+            </div>
+
+            {/* Submit Button */}
+            <div className="pt-3">
+              <button
+                id="btn-create-flashcard-deck"
+                type="submit"
+                disabled={isGeneratingAi}
+                className="w-full py-4 px-6 bg-gradient-to-r from-amber-500 via-amber-600 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-extrabold rounded-2xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 text-sm sm:text-base disabled:opacity-50 cursor-pointer"
+              >
+                {isGeneratingAi ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Creando {cardCount} tarjetas con IA...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    <span>Crear Mazo con IA</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+
+          {/* Quick info card about Chatbot without photos */}
+          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-100 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                <Bot className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-bold text-indigo-950 block">
+                  ¿Tienes dudas de teoría o ejercicios?
+                </span>
+                <span className="text-slate-600">
+                  Usa nuestro Chatbot IA para preguntar directamente sin subir fotos.
+                </span>
+              </div>
+            </div>
+            {onOpenChatbot && (
+              <button
+                type="button"
+                onClick={() => onOpenChatbot(subject, topic)}
+                className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shrink-0 shadow-xs"
+              >
+                Abrir Chatbot IA
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // VIEW 2: Active Deck Study Mode
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10 animate-fadeIn">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold uppercase tracking-wider flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-amber-700" />
               <span>Modo Flashcards</span>
@@ -216,43 +455,54 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
             )}
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-            {deck?.title || 'Tarjetas de Estudio Interactivas'}
+            {deck?.title || `Tarjetas: ${deck.subject} - ${deck.topic}`}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Repasa y consolida los conceptos clave girando cada tarjeta antes de ponerte a prueba en el examen.
+            Pulsa en la tarjeta o presiona la barra espaciadora para voltear y ver la solución explicada.
           </p>
         </div>
 
-        {/* Action Buttons */}
+        {/* Header Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Ask Chatbot AI */}
+          <button
+            type="button"
+            onClick={() => setIsChatOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs sm:text-sm font-bold border border-indigo-200 transition-colors shadow-2xs"
+            title="Preguntar cualquier duda al tutor IA sin subir fotos"
+          >
+            <Bot className="w-4 h-4 text-indigo-600" />
+            <span>Chatbot IA</span>
+          </button>
+
+          {/* New Deck */}
           <button
             type="button"
             onClick={() => {
-              setGenSubject(deck?.subject || 'Biología y Geología');
-              setGenTopic(deck?.topic || 'La Célula');
-              setGenLevel(deck?.level || 'Bachillerato');
-              setIsGeneratingModalOpen(true);
+              setDeck(null);
+              setSubject('');
+              setTopic('');
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs sm:text-sm font-bold border border-indigo-200 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-bold border border-slate-200 transition-colors"
           >
-            <Wand2 className="w-4 h-4" />
-            <span>Generar Nuevo Mazo</span>
+            <Plus className="w-4 h-4" />
+            <span>Crear Mazo</span>
           </button>
 
+          {/* Take Exam */}
           <button
             type="button"
-            onClick={() => onNavigateToExam(deck?.subject, deck?.topic, deck?.level)}
+            onClick={() => onNavigateToExam(deck.subject, deck.topic, deck.level)}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold shadow-sm shadow-indigo-200 transition-all hover:scale-[1.02] active:scale-95"
           >
             <GraduationCap className="w-4 h-4" />
-            <span>Hacer Examen Tipo Test →</span>
+            <span>Hacer Examen →</span>
           </button>
         </div>
       </div>
 
       {/* Progress & Controls Bar */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        {/* Progress details */}
         <div className="flex items-center gap-4 w-full sm:w-auto">
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center font-bold text-sm">
@@ -282,7 +532,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
             type="button"
             onClick={handleShuffleDeck}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors"
-            title="Mezclar el orden de las tarjetas"
+            title="Mezclar orden"
           >
             <Shuffle className="w-3.5 h-3.5 text-slate-500" />
             <span>Mezclar</span>
@@ -291,7 +541,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
             type="button"
             onClick={handleRestartDeck}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors"
-            title="Reiniciar progreso del mazo"
+            title="Reiniciar progreso"
           >
             <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
             <span>Reiniciar</span>
@@ -300,7 +550,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
       </div>
 
       {/* The 3D Interactive Flashcard */}
-      {currentCard ? (
+      {currentCard && (
         <div className="perspective-1000 mb-6">
           <div
             onClick={() => setIsFlipped((prev) => !prev)}
@@ -335,7 +585,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
                 }`}
               >
                 <RotateCw className="w-3.5 h-3.5" />
-                <span>{isFlipped ? 'Ver pregunta' : 'Clic para voltear'}</span>
+                <span>{isFlipped ? 'Ver anverso' : 'Clic para voltear'}</span>
               </div>
             </div>
 
@@ -343,7 +593,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
             <div className="flex flex-col justify-center min-h-[190px] text-center px-2 sm:px-6">
               {!isFlipped ? (
                 <div>
-                  <div className="text-xs uppercase font-bold text-indigo-600 tracking-wider mb-2">
+                  <div className="text-xs uppercase font-bold text-amber-600 tracking-wider mb-2">
                     Anverso • Pregunta
                   </div>
                   <h2 className="text-lg sm:text-2xl font-bold text-slate-900 leading-snug">
@@ -365,10 +615,10 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
                             e.stopPropagation();
                             setShowHint(true);
                           }}
-                          className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-semibold underline underline-offset-4"
+                          className="inline-flex items-center gap-1.5 text-xs text-amber-700 hover:text-amber-800 font-semibold underline underline-offset-4"
                         >
                           <HelpCircle className="w-3.5 h-3.5" />
-                          <span>Ver pista orientativa</span>
+                          <span>Ver pista</span>
                         </button>
                       )}
                     </div>
@@ -379,7 +629,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
                   <div className="text-xs uppercase font-bold text-emerald-400 tracking-wider mb-2">
                     Reverso • Respuesta y Explicación
                   </div>
-                  <div className="text-base sm:text-xl font-medium text-slate-100 leading-relaxed max-w-2xl mx-auto whitespace-pre-line text-left sm:text-center">
+                  <div className="text-base sm:text-lg font-medium text-slate-100 leading-relaxed max-w-2xl mx-auto whitespace-pre-line text-left sm:text-center">
                     {currentCard.back}
                   </div>
                 </div>
@@ -391,17 +641,27 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
               <span className={isFlipped ? 'text-indigo-300/80' : 'text-slate-400'}>
                 {currentIndex + 1} de {cards.length}
               </span>
-              <span className={isFlipped ? 'text-indigo-300/80' : 'text-slate-400'}>
-                Barra espaciadora o clic para girar
-              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsChatOpen(true);
+                  handleSendChatQuestion(`Tengo dudas con esta tarjeta de ${deck.subject}: "${currentCard.front}". ¿Me lo explicas con más detalle?`);
+                }}
+                className={`inline-flex items-center gap-1 font-semibold ${
+                  isFlipped ? 'text-indigo-300 hover:text-white' : 'text-indigo-600 hover:text-indigo-800'
+                }`}
+              >
+                <Bot className="w-3.5 h-3.5" />
+                <span>Preguntar duda de esta tarjeta</span>
+              </button>
             </div>
           </div>
         </div>
-      ) : null}
+      )}
 
       {/* Bottom Controls: Navigation and Mastery */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        {/* Previous button */}
         <button
           type="button"
           onClick={handlePrevCard}
@@ -412,7 +672,6 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
           <span>Anterior</span>
         </button>
 
-        {/* Mastery Toggle Button */}
         {currentCard && (
           <button
             type="button"
@@ -428,7 +687,6 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
           </button>
         )}
 
-        {/* Next button */}
         <button
           type="button"
           onClick={handleNextCard}
@@ -440,7 +698,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
         </button>
       </div>
 
-      {/* Completion Banner */}
+      {/* Completion Trophy Banner */}
       {progressPercent === 100 && cards.length > 0 && (
         <div className="mt-8 p-6 rounded-3xl bg-emerald-50 border border-emerald-200 text-center animate-fadeIn">
           <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-3">
@@ -450,7 +708,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
             ¡Enhorabuena! Has dominado todas las tarjetas
           </h3>
           <p className="text-xs sm:text-sm text-emerald-800 mt-1 max-w-md mx-auto">
-            Tienes los conceptos de este tema perfectamente claros. Es el momento ideal para realizar el examen de prueba.
+            Tienes los conceptos de este tema perfectamente afianzados. Es el momento perfecto para ponerte a prueba con el examen.
           </p>
           <div className="mt-4 flex items-center justify-center gap-3">
             <button
@@ -462,7 +720,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onNavigateToExam(deck?.subject, deck?.topic, deck?.level)}
+              onClick={() => onNavigateToExam(deck.subject, deck.topic, deck.level)}
               className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-bold shadow-sm transition-all"
             >
               Hacer Examen Tipo Test 🚀
@@ -471,131 +729,104 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
         </div>
       )}
 
-      {/* Modal: Generar nuevo mazo de tarjetas con IA */}
-      {isGeneratingModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-100">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+      {/* Slide-over or Modal Chatbot Assistant Panel */}
+      {isChatOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-900/40 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white w-full max-w-md h-full shadow-2xl border-l border-slate-200 flex flex-col p-5 animate-slideLeft">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
-                  <Sparkles className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
+                  <Bot className="w-4 h-4" />
                 </div>
-                <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                  Generar Tarjetas de Estudio con IA
-                </h3>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Tutor IA • {deck.subject}
+                  </h3>
+                  <span className="text-[11px] text-slate-400">
+                    Responde dudas directamente sin fotos
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setIsGeneratingModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                onClick={() => setIsChatOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {genError && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-50 text-rose-800 text-xs border border-rose-200">
-                {genError}
-              </div>
-            )}
-
-            <form onSubmit={handleGenerateDeck} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Materia / Asignatura
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={genSubject}
-                  onChange={(e) => setGenSubject(e.target.value)}
-                  placeholder="Ej. Biología Celular, Historia de España, Inglés..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Tema específico
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={genTopic}
-                  onChange={(e) => setGenTopic(e.target.value)}
-                  placeholder="Ej. Fotosíntesis y Respiración, Guerra Fría, Sintaxis..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Nivel Educativo
-                </label>
-                <select
-                  value={genLevel}
-                  onChange={(e) => setGenLevel(e.target.value as EducationalLevel)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-                >
-                  <option value="Primaria">Primaria (6 - 12 años)</option>
-                  <option value="Secundaria (ESO)">Secundaria (ESO)</option>
-                  <option value="Bachillerato">Bachillerato / Selectividad</option>
-                  <option value="Formación Profesional">Formación Profesional</option>
-                  <option value="Universidad / Grado">Universidad / Grado</option>
-                  <option value="Máster / Oposiciones">Máster / Oposiciones</option>
-                </select>
-              </div>
-
-              {/* Quick Preset Buttons */}
-              <div className="pt-1">
-                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Sugerencias rápidas:
+            {/* Chat conversation area */}
+            <div className="flex-1 overflow-y-auto space-y-3 p-1">
+              {chatMessages.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-xs">
+                  <MessageSquare className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                  <p className="font-semibold text-slate-600">
+                    ¿Tienes dudas sobre las tarjetas o el tema?
+                  </p>
+                  <p className="mt-1">
+                    Pregúntame cualquier concepto y te lo explicaré con ejemplos paso a paso.
+                  </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {QUICK_SUBJECTS.slice(0, 5).map((qs) => (
-                    <button
-                      key={qs.id}
-                      type="button"
-                      onClick={() => {
-                        setGenSubject(qs.name);
-                        setGenTopic(qs.topics[0]?.title || '');
-                        setGenLevel(qs.defaultLevel);
-                      }}
-                      className="px-2 py-1 text-xs rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 transition-colors"
+              ) : (
+                chatMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[88%] p-3 rounded-2xl text-xs leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-indigo-600 text-white rounded-tr-xs'
+                          : 'bg-slate-100 text-slate-800 rounded-tl-xs'
+                      }`}
                     >
-                      {qs.icon} {qs.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                      <div className="markdown-body">
+                        <Markdown>{msg.content}</Markdown>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
 
-              <div className="pt-3 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setIsGeneratingModalOpen(false)}
-                  className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-                >
-                  Cancelar
-                </button>
+              {isChatLoading && (
+                <div className="flex justify-start">
+                  <div className="p-3 rounded-2xl bg-slate-100 text-xs text-slate-500 rounded-tl-xs flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-bounce" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-bounce delay-100" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-bounce delay-200" />
+                    <span className="ml-1">El Tutor IA está respondiendo...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Input bar */}
+            <div className="pt-3 border-t border-slate-100">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendChatQuestion();
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Pregunta tu duda..."
+                  className="flex-1 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
                 <button
                   type="submit"
-                  disabled={isGeneratingAi}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm disabled:opacity-50 transition-all"
+                  disabled={!chatInput.trim() || isChatLoading}
+                  className="p-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl shadow-xs"
                 >
-                  {isGeneratingAi ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Generando con IA...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Generar 8 Tarjetas</span>
-                    </>
-                  )}
+                  <Send className="w-4 h-4" />
                 </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}
