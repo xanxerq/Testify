@@ -15,6 +15,7 @@ import {
 import { historyService } from '../services/historyService';
 import { isSupabaseConfigured } from '../services/supabase';
 import { ExamResult } from '../types';
+import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface ExamHistoryProps {
   userId?: string;
@@ -83,7 +84,9 @@ export const ExamHistory: React.FC<ExamHistoryProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <PdcAdaptationButton variant="pill" showTooltip={true} />
+
           <button
             id="btn-history-refresh"
             type="button"
@@ -217,6 +220,11 @@ export const ExamHistory: React.FC<ExamHistoryProps> = ({
                     <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                       {r.level}
                     </span>
+                    {r.examData?.isPdcAdapted && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                        🎓 PDC
+                      </span>
+                    )}
                     <span className="text-[11px] text-slate-400 flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
                       {new Date(r.completedAt).toLocaleDateString('es-ES', {

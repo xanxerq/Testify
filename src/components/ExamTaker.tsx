@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { Exam, ExamQuestion, MultipleChoiceQuestion, OpenQuestion } from '../types';
 import { exportExamToPrintablePdf } from '../utils/pdfExport';
+import { usePdc } from '../context/PdcContext';
+import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface ExamTakerProps {
   exam: Exam;
@@ -45,6 +47,8 @@ export const ExamTaker: React.FC<ExamTakerProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [showPdfModal, setShowPdfModal] = useState<boolean>(false);
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+
+  const { isPdcActive } = usePdc();
 
   // Timer state
   const totalSeconds = (exam.timeLimitMinutes || 20) * 60;
@@ -167,6 +171,12 @@ export const ExamTaker: React.FC<ExamTakerProps> = ({
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
               Dificultad: {exam.difficulty}
             </span>
+            {(exam.isPdcAdapted || isPdcActive) && (
+              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                <span>🎓</span>
+                <span>Adaptación PDC</span>
+              </span>
+            )}
           </div>
           <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
             {exam.title}
@@ -175,6 +185,9 @@ export const ExamTaker: React.FC<ExamTakerProps> = ({
 
         {/* Timer & Secondary actions & Submit controls */}
         <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end flex-wrap">
+          {/* PDC Adaptation Button */}
+          <PdcAdaptationButton variant="pill" showTooltip={true} />
+
           {exam.timeLimitMinutes && exam.timeLimitMinutes > 0 ? (
             <div
               className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-mono font-bold transition-colors ${

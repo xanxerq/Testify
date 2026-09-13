@@ -276,6 +276,7 @@ app.post('/api/generate-exam', async (req, res) => {
       timeLimitMinutes = 20,
       materials = [], // array of { name, mimeType, base64Data }
       additionalNotes = '',
+      isPdcAdapted = false,
     } = req.body;
 
     if (!subject || !topic) {
@@ -303,6 +304,14 @@ app.post('/api/generate-exam', async (req, res) => {
       }
     }
 
+    const pdcSystemInstructions = isPdcAdapted ? `
+ADAPTACIÓN CURRICULAR PDC (PROGRAMA DE DIVERSIFICACIÓN CURRICULAR / APOYO EDUCATIVO):
+- Este examen está destinado a estudiantes de Diversificación Curricular (PDC) o con adaptación curricular en la ESO.
+- Aplica pautas de LECTURA FÁCIL: enunciados directos, oraciones cortas y vocabulario sin ambigüedades.
+- En preguntas de opción múltiple (test): 4 opciones con redacción concisa y distractores pedagógicos claros, sin preguntas trampa ni dobles negaciones.
+- En preguntas abiertas: incluye SIEMPRE una pista orientativa ("hint") clara que ayude al alumno a estructurar su respuesta, y desglosa los criterios de corrección en puntos sencillos.
+- Asigna un tiempo holgado y reduce la sobrecarga cognitiva accesoria.` : '';
+
     const systemPrompt = `Eres un profesor experto y pedagogo de alto nivel encargado de diseñar exámenes formales y didácticos.
 Tu objetivo es generar un examen riguroso, equilibrado y perfectamente adaptado al nivel educativo y al temario proporcionado por el alumno.
 Idioma obligatorio: Español.
@@ -314,7 +323,9 @@ Parámetros del examen:
 - Dificultad: "${difficulty}"
 - Cantidad de preguntas tipo test (opción múltiple): exactamente ${testCount}
 - Cantidad de preguntas normales / abiertas (desarrollo / razonamiento): exactamente ${openCount}
+${isPdcAdapted ? '- MODO ADAPTADO A PDC (Diversificación Curricular): ACTIVO' : ''}
 ${additionalNotes ? `- Indicaciones especiales del alumno: "${additionalNotes}"` : ''}
+${pdcSystemInstructions}
 
 CRITERIOS FUNDAMENTALES:
 1. Si se han adjuntado fotos o PDF de apuntes/temario, básate estricta y fielmente en los conceptos, fórmulas, hechos o definiciones que aparecen en ese material.
@@ -429,6 +440,7 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
       overview: examData.overview || `Examen generado sobre ${topic} (${subject}).`,
       questions,
       totalPoints: currentTotalPoints,
+      isPdcAdapted: Boolean(isPdcAdapted),
     };
 
     return res.json({ success: true, exam });
@@ -569,13 +581,25 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
 // Endpoint: AI Study Chatbot (answers academic questions without requiring photos)
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages = [], subject = '', level = '', topic = '' } = req.body;
+    const { messages = [], subject = '', level = '', topic = '', isPdcAdapted = false } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'La conversación debe incluir al menos un mensaje.' });
     }
 
     const ai = getGemini();
+
+    const pdcChatGuideline = isPdcAdapted
+      ? `
+ADAPTACIÓN CURRICULAR PDC (PROGRAMA DE DIVERSIFICACIÓN CURRICULAR / REFUERZO EDUCATIVO):
+- El alumno cursa PDC o requiere adaptación curricular.
+- Metodología de LECTURA FÁCIL: redacta con frases directas, sencillas y párrafos breves.
+- Desglosa cualquier explicación o problema en pasos numerados secuenciales (1, 2, 3...).
+- Utiliza analogías cotidianas y ejemplos muy prácticos de la vida diaria para hacer los conceptos tangibles.
+- En matemáticas o ciencias, detalla cada cálculo u operación sin omitir pasos intermedios.
+- Evita vocabulario excesivamente abstracto sin explicarlo de inmediato con palabras corrientes.
+- Incluye siempre refuerzo positivo, empatía y motivación para fortalecer su confianza académica.`
+      : '';
 
     const systemPrompt = `Eres el Tutor IA y Profesor Particular de Testify, un asistente pedagógico de excelencia.
 Tu objetivo es responder de forma clara, amena, rigurosa y muy didáctica a cualquier pregunta o duda académica de los estudiantes, SIN necesidad de que adjunten fotos.
@@ -585,6 +609,8 @@ Contexto del estudiante:
 ${subject ? `- Materia/Asignatura: "${subject}"` : '- Materia: General / Cualquier asignatura'}
 ${level ? `- Nivel Educativo: "${level}"` : '- Nivel: Bachillerato / ESO'}
 ${topic ? `- Tema de estudio: "${topic}"` : ''}
+${isPdcAdapted ? '- MODO ADAPTADO A PDC (Diversificación Curricular): ACTIVO' : ''}
+${pdcChatGuideline}
 
 DIRECTRICES PEDAGÓGICAS:
 1. Responde directamente a la duda planteada con tono empático, paciente y motivador.

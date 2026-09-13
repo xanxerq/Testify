@@ -37,6 +37,8 @@ import {
 import { geminiService } from '../services/geminiService';
 import { homeworkService } from '../services/homeworkService';
 import { CameraModal } from './CameraModal';
+import { usePdc } from '../context/PdcContext';
+import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface HomeworkSolverViewProps {
   user: User | null;
@@ -106,6 +108,8 @@ export const HomeworkSolverView: React.FC<HomeworkSolverViewProps> = ({
     homeworkService.getHomeworkList(user?.id)
   );
   const [historySearchQuery, setHistorySearchQuery] = useState('');
+
+  const { isPdcActive } = usePdc();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -223,6 +227,7 @@ export const HomeworkSolverView: React.FC<HomeworkSolverViewProps> = ({
       subject: selectedSubject || undefined,
       level,
       specificDoubt: specificDoubt.trim() || undefined,
+      isPdcAdapted: isPdcActive,
     };
 
     setIsSolving(true);
@@ -354,8 +359,11 @@ ${currentSolution.commonMistakes.join('\n- ')}`;
           </p>
         </div>
 
-        {/* View switcher tabs */}
-        <div className="flex items-center gap-2 self-start sm:self-center bg-slate-100 p-1 rounded-xl border border-slate-200/70">
+        {/* Actions & View switcher tabs */}
+        <div className="flex items-center gap-2.5 flex-wrap self-start sm:self-center">
+          <PdcAdaptationButton variant="pill" showTooltip={true} />
+
+          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200/70">
           <button
             id="tab-btn-solve"
             onClick={() => {
@@ -390,6 +398,7 @@ ${currentSolution.commonMistakes.join('\n- ')}`;
           </button>
         </div>
       </div>
+    </div>
 
       {/* TAB 1: SOLVE HOMEWORK */}
       {activeTab === 'solve' && (
@@ -597,6 +606,11 @@ ${currentSolution.commonMistakes.join('\n- ')}`;
                   </div>
                 </div>
               )}
+
+              {/* PDC Curricular Adaptation Option Card */}
+              <div className="pt-2">
+                <PdcAdaptationButton variant="card" showTooltip={true} />
+              </div>
 
               {/* Main Submit Button */}
               <div className="pt-2">

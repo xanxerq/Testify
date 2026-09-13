@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { EducationalLevel, User } from '../types';
 import { geminiService } from '../services/geminiService';
+import { usePdc } from '../context/PdcContext';
+import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface ChatMessage {
   id: string;
@@ -78,6 +80,8 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const { isPdcActive } = usePdc();
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -118,7 +122,8 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({
         apiMessages,
         subject.trim() || undefined,
         level,
-        topic.trim() || undefined
+        topic.trim() || undefined,
+        isPdcActive
       );
 
       const botMessage: ChatMessage = {
@@ -200,6 +205,9 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({
             ))}
           </select>
 
+          {/* PDC Adaptation Button in Chatbot */}
+          <PdcAdaptationButton variant="pill" showTooltip={true} />
+
           {messages.length > 0 && (
             <button
               type="button"
@@ -213,6 +221,24 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* PDC Mode Active Notification Banner */}
+      {isPdcActive && (
+        <div className="mb-3 px-4 py-2.5 rounded-xl bg-amber-50/90 border border-amber-200/80 text-amber-900 text-xs flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🎓</span>
+            <div>
+              <span className="font-bold">Adaptación PDC Activa:</span>{' '}
+              <span className="text-amber-800">
+                El tutor IA responderá con lenguaje sencillo, lectura fácil y resolución paso a paso.
+              </span>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold text-amber-700 bg-amber-200/60 px-2 py-0.5 rounded-full shrink-0">
+            Lectura Fácil
+          </span>
+        </div>
+      )}
 
       {/* Main Messages Area */}
       <div className="flex-1 overflow-y-auto bg-slate-50/50 rounded-2xl border border-slate-200/80 p-4 sm:p-6 space-y-4 mb-4">

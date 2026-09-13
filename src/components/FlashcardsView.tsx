@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { EducationalLevel, Exam, Flashcard, FlashcardDeck, User } from '../types';
 import { geminiService } from '../services/geminiService';
+import { usePdc } from '../context/PdcContext';
+import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface FlashcardsViewProps {
   initialDeck?: FlashcardDeck | null;
@@ -81,6 +83,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const { isPdcActive } = usePdc();
 
   // Integrated Chatbot modal / side panel state
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -207,7 +210,8 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
         level,
         [],
         cardCount,
-        additionalInstructions.trim()
+        additionalInstructions.trim(),
+        isPdcActive
       );
 
       setDeck(newDeck);
@@ -281,6 +285,9 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
             <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-md mx-auto">
               Escribe tu asignatura y tema para generar tarjetas interactivas de estudio activo y memoria espaciada con IA.
             </p>
+            <div className="flex justify-center mt-3">
+              <PdcAdaptationButton variant="pill" showTooltip={true} />
+            </div>
           </div>
 
           {formError && (
@@ -379,6 +386,9 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
               />
             </div>
 
+            {/* PDC Curricular Adaptation Option Card */}
+            <PdcAdaptationButton variant="card" showTooltip={true} />
+
             {/* Submit Button */}
             <div className="pt-3">
               <button
@@ -453,6 +463,12 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
                 {deck.level}
               </span>
             )}
+            {(deck?.isPdcAdapted || isPdcActive) && (
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1">
+                <span>🎓</span>
+                <span>Adaptación PDC</span>
+              </span>
+            )}
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
             {deck?.title || `Tarjetas: ${deck.subject} - ${deck.topic}`}
@@ -464,6 +480,9 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
 
         {/* Header Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* PDC Toggle Button */}
+          <PdcAdaptationButton variant="pill" showTooltip={true} />
+
           {/* Ask Chatbot AI */}
           <button
             type="button"

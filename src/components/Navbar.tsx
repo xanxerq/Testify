@@ -1,6 +1,7 @@
 import React from 'react';
 import { BookOpen, Bot, Database, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, Sparkles, User as UserIcon, Users } from 'lucide-react';
 import { User } from '../types';
+import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface NavbarProps {
   user: User | null;
@@ -157,6 +158,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
           )}
+
+          {/* PDC Adaptation Button (accessible across entire platform) */}
+          <div className="flex items-center">
+            <PdcAdaptationButton variant="pill" />
+          </div>
 
           {/* User Auth Section */}
           {user ? (

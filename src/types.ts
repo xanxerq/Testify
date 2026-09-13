@@ -40,6 +40,7 @@ export interface ExamSetupConfig {
   timed: boolean;
   timeLimitMinutes: number;
   additionalNotes?: string;
+  isPdcAdapted?: boolean;
 }
 
 export interface BaseQuestion {
@@ -76,6 +77,7 @@ export interface Exam {
   overview: string;
   questions: ExamQuestion[];
   totalPoints: number;
+  isPdcAdapted?: boolean;
 }
 
 export interface QuestionFeedback {
@@ -134,6 +136,7 @@ export interface StudyNotesSetupConfig {
   style: NotesStyle;
   focusKeywords?: string;
   additionalInstructions?: string;
+  isPdcAdapted?: boolean;
 }
 
 export interface KeyConceptItem {
@@ -167,6 +170,7 @@ export interface StudyNote {
   authorEmail?: string;
   likesCount?: number;
   downloadsCount?: number;
+  isPdcAdapted?: boolean;
 }
 
 export interface RoomParticipant {
@@ -222,12 +226,14 @@ export interface HomeworkSolution {
   };
   exerciseImageUrl?: string;
   additionalNotes?: string;
+  isPdcAdapted?: boolean;
 }
 
 export interface HomeworkSolveConfig {
   subject?: string;
   level?: EducationalLevel;
   specificDoubt?: string;
+  isPdcAdapted?: boolean;
 }
 
 export interface Flashcard {
@@ -247,6 +253,7 @@ export interface FlashcardDeck {
   level: EducationalLevel;
   cards: Flashcard[];
   createdAt: string;
+  isPdcAdapted?: boolean;
 }
 
 

@@ -11,6 +11,7 @@ import { HomeworkSolverView } from './components/HomeworkSolverView';
 import { FlashcardsView } from './components/FlashcardsView';
 import { ChatbotView } from './components/ChatbotView';
 import { RoomLobbyModal } from './components/RoomLobbyModal';
+import { PdcInfoModal } from './components/PdcInfoModal';
 import { authService } from './services/authService';
 import { geminiService } from './services/geminiService';
 import { historyService } from './services/historyService';
@@ -547,6 +548,9 @@ export default function App() {
         onClose={() => setIsAdminModalOpen(false)}
         currentUser={user}
       />
+
+      {/* PDC Curricular Adaptation Info & Settings Modal */}
+      <PdcInfoModal />
 
       {/* Clean Footer */}
       <footer className="border-t border-slate-200 bg-white/70 py-6 text-center text-xs text-slate-500">

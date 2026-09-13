@@ -1,1 +1,11 @@
 @import "tailwindcss";
+
+.pdc-easy-reading {
+  font-size: 1.04rem;
+  letter-spacing: 0.015em;
+}
+
+.pdc-easy-reading p,
+.pdc-easy-reading li {
+  line-height: 1.75;
+}

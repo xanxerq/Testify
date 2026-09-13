@@ -21,6 +21,8 @@ import {
 import { Exam, ExamResult, MultipleChoiceQuestion, OpenQuestion } from '../types';
 import { RoomLeaderboard } from './RoomLeaderboard';
 import { exportExamResultToPdf } from '../utils/pdfExport';
+import { usePdc } from '../context/PdcContext';
+import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface ExamResultsProps {
   result: ExamResult;
@@ -43,6 +45,7 @@ export const ExamResults: React.FC<ExamResultsProps> = ({
 }) => {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfSuccess, setPdfSuccess] = useState(false);
+  const { isPdcActive } = usePdc();
 
   useEffect(() => {
     // Trigger celebratory confetti if passed
@@ -103,10 +106,18 @@ export const ExamResults: React.FC<ExamResultsProps> = ({
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm mb-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-6 border-b border-slate-100">
           <div className="text-center md:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold mb-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold mb-2 flex-wrap">
               <span>{result.subject}</span>
               <span>•</span>
               <span>{result.level}</span>
+              {(result.examData?.isPdcAdapted || isPdcActive) && (
+                <>
+                  <span>•</span>
+                  <span className="text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
+                    <span>🎓</span> Adaptado a PDC
+                  </span>
+                </>
+              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               {result.examTitle}
@@ -263,15 +274,19 @@ export const ExamResults: React.FC<ExamResultsProps> = ({
             </button>
           </div>
 
-          <button
-            id="btn-new-exam"
-            type="button"
-            onClick={onNewExam}
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition-all cursor-pointer"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Crear Nuevo Examen</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <PdcAdaptationButton variant="pill" showTooltip={true} />
+
+            <button
+              id="btn-new-exam"
+              type="button"
+              onClick={onNewExam}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition-all cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Crear Nuevo Examen</span>
+            </button>
+          </div>
         </div>
       </div>
 

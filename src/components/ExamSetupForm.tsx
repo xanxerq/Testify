@@ -31,6 +31,8 @@ import {
 } from '../data/demoMaterials';
 import { EducationalLevel, ExamDifficulty, ExamSetupConfig, UploadedMaterial } from '../types';
 import { CameraModal } from './CameraModal';
+import { usePdc } from '../context/PdcContext';
+import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface ExamSetupFormProps {
   onGenerate: (config: ExamSetupConfig, materials: UploadedMaterial[], startMultiplayer?: boolean) => Promise<void>;
@@ -95,6 +97,8 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  const { isPdcActive } = usePdc();
 
   React.useEffect(() => {
     if (initialConfig) {
@@ -285,6 +289,7 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
       timed,
       timeLimitMinutes: timed ? timeLimitMinutes : 0,
       additionalNotes: additionalNotes.trim(),
+      isPdcAdapted: isPdcActive,
     };
 
     try {
@@ -401,9 +406,10 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
               </p>
             </div>
 
-            {/* Dificultad del examen */}
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <span className="text-xs font-semibold text-slate-500">Dificultad:</span>
+            {/* Dificultad del examen y PDC */}
+            <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+              <PdcAdaptationButton variant="pill" showTooltip={true} />
+              <span className="text-xs font-semibold text-slate-500 hidden sm:inline">Dificultad:</span>
               <div className="inline-flex items-center p-0.5 bg-slate-200/80 rounded-xl text-xs font-semibold">
                 {(['Fácil', 'Media', 'Difícil'] as ExamDifficulty[]).map((dif) => (
                   <button
@@ -1107,6 +1113,11 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Adaptación Curricular PDC Option */}
+          <div className="pt-2 border-t border-slate-100">
+            <PdcAdaptationButton variant="card" showTooltip={true} />
           </div>
         </div>
 

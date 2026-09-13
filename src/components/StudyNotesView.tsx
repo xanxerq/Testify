@@ -43,6 +43,8 @@ import {
 import { notesService } from '../services/notesService';
 import { geminiService } from '../services/geminiService';
 import { CameraModal } from './CameraModal';
+import { usePdc } from '../context/PdcContext';
+import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface StudyNotesViewProps {
   user: User | null;
@@ -135,6 +137,8 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
   const [isSubmittingPublish, setIsSubmittingPublish] = useState<boolean>(false);
   const [copiedPublicId, setCopiedPublicId] = useState<string | null>(null);
   const [likedNoteIds, setLikedNoteIds] = useState<Record<string, boolean>>({});
+
+  const { isPdcActive } = usePdc();
 
   // Form states (completely empty by default, no prefilled text)
   const [subject, setSubject] = useState('');
@@ -242,6 +246,7 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
         style,
         focusKeywords: focusKeywords.trim() || undefined,
         additionalInstructions: additionalInstructions.trim() || undefined,
+        isPdcAdapted: isPdcActive,
       };
 
       const generatedNote = await geminiService.generateStudyNotes(config, materials);
@@ -466,8 +471,12 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
           </p>
         </div>
 
-        {/* View Switcher Pills */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 self-start md:self-auto">
+        {/* Actions & View Switcher */}
+        <div className="flex items-center gap-2.5 flex-wrap self-start md:self-auto">
+          <PdcAdaptationButton variant="pill" showTooltip={true} />
+
+          {/* View Switcher Pills */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80">
           <button
             id="notes-tab-create"
             onClick={() => setSubView('create')}
@@ -526,6 +535,7 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
           )}
         </div>
       </div>
+    </div>
 
       {/* ================= VIEW 1: CREATE NOTES FORM ================= */}
       {subView === 'create' && (
@@ -820,6 +830,9 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* PDC Curricular Adaptation Option Card */}
+            <PdcAdaptationButton variant="card" showTooltip={true} />
 
             {/* Validation Notice */}
             {validationError && (

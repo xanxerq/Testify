@@ -330,6 +330,16 @@ DIRECTRICES ESPECÍFICAS MODELO PAU / EBAU:
 - Inglés: Reading comprehension con evidencia textual explícita, rephrasing de oraciones (B2) y redacción guiada de opinión.` : ''}
 `;
 
+    const pdcCurricularGuidelines = config.isPdcAdapted
+      ? `
+ADAPTACIÓN CURRICULAR PDC (PROGRAMA DE DIVERSIFICACIÓN CURRICULAR / REFUERZO EDUCATIVO):
+- Este examen está adaptado para alumnos que cursan PDC en la ESO o requieren adaptación curricular.
+- Metodología de LECTURA FÁCIL: redacta enunciados directos, sin oraciones complejas ni trampas léxicas.
+- En tipo test: redacta 4 opciones nítidas y bien diferenciadas conceptualmente.
+- En preguntas abiertas: incluye siempre una pista orientativa ("hint") que andamie la respuesta del alumno.
+- Desglosa los criterios de evaluación de forma sencilla y valora la comprensión práctica.`
+      : '';
+
     const systemPrompt = `Eres un profesor experto y miembro de comisiones evaluadoras del sistema educativo de España (LOMLOE y PAU / EBAU).
 Tu objetivo es generar un examen riguroso, pedagógico y perfectamente adaptado a los criterios curriculares oficiales de España, al nivel educativo y al temario proporcionado por el alumno.
 Idioma obligatorio: Español.
@@ -341,9 +351,11 @@ Parámetros del examen:
 - Dificultad: "${difficulty}"
 - Cantidad de preguntas tipo test (opción múltiple): exactamente ${testCount}
 - Cantidad de preguntas normales / abiertas (desarrollo / razonamiento): exactamente ${openCount}
+${config.isPdcAdapted ? '- MODO ADAPTADO A PDC (Diversificación Curricular): ACTIVO' : ''}
 ${additionalNotes ? `- Indicaciones especiales del alumno / profesor: "${additionalNotes}"` : ''}
 
 ${isSpanishSchoolSystem ? spanishCurricularGuidelines : ''}
+${pdcCurricularGuidelines}
 
 CRITERIOS FUNDAMENTALES DE REDACCIÓN:
 1. Si se han adjuntado fotos o documentos de temario, básate estricta y fielmente en los conceptos, fórmulas, hechos o definiciones que aparecen en ese material.
@@ -514,6 +526,7 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
       overview: examData.overview || `Examen generado sobre ${topic} (${subject}).`,
       questions,
       totalPoints: currentTotalPoints || 10,
+      isPdcAdapted: Boolean(config.isPdcAdapted),
     };
 
     return exam;
@@ -605,6 +618,16 @@ Asegúrate de incluir exactamente ${testCount} preguntas de tipo "multiple_choic
         'Elabora un GLOSARIO Y COMPENDIO DE FÓRMULAS/LEYES CLAVE: define minuciosamente cada término técnico, fórmula matemática/científica, ley o principio y cómo se aplica.',
     };
 
+    const pdcNotesGuideline = config.isPdcAdapted
+      ? `
+ADAPTACIÓN CURRICULAR PDC (PROGRAMA DE DIVERSIFICACIÓN CURRICULAR / REFUERZO EDUCATIVO):
+- Diseña los apuntes para un alumno de PDC o con adaptación curricular en ESO.
+- Metodología de LECTURA FÁCIL: explicaciones directas, frases simples, ordenadas y sin rodeos.
+- Resalta en **negrita** los términos esenciales y proporciona analogías de la vida cotidiana.
+- En los conceptos clave, ofrece definiciones cortas y muy comprensibles.
+- Evita la saturación de texto innecesario y potencia el orden visual.`
+      : '';
+
     const systemPrompt = `Eres un docente pedagogo de excelencia especializado en técnicas de estudio de alto rendimiento (Active Recall, Spaced Repetition y Técnica Feynman).
 Tu objetivo es crear unos apuntes de estudio excepcionales, rigurosos, didácticos y perfectamente adaptados al nivel del alumno.
 Idioma obligatorio: Español.
@@ -614,8 +637,10 @@ Parámetros solicitados:
 - Tema específico: "${topic}"
 - Nivel educativo: "${level}"
 - Estilo de apuntes: "${style}" (${styleInstructions[style] || styleInstructions.comprehensive})
+${config.isPdcAdapted ? '- MODO ADAPTADO A PDC (Diversificación Curricular): ACTIVO' : ''}
 ${focusKeywords ? `- Conceptos/palabras clave prioritarias: "${focusKeywords}"` : ''}
 ${additionalInstructions ? `- Instrucciones adicionales del estudiante: "${additionalInstructions}"` : ''}
+${pdcNotesGuideline}
 
 REGLAS DE FORMATO:
 1. Si se han adjuntado fotos, PDF o textos de temario, extrae y sintetiza fielmente lo que contienen, mejorando la redacción, orden y claridad didáctica.
@@ -696,6 +721,7 @@ Devuelve exclusivamente el objeto JSON válido.`;
         keyConcepts: Array.isArray(parsed.keyConcepts) ? parsed.keyConcepts : [],
         quickReviewQuestions: Array.isArray(parsed.quickReviewQuestions) ? parsed.quickReviewQuestions : [],
         tags: Array.isArray(parsed.tags) ? parsed.tags : [subject, topic],
+        isPdcAdapted: Boolean(config.isPdcAdapted),
       };
 
       return note;
@@ -884,6 +910,15 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
       ? `Duda o indicación específica del alumno: "${config.specificDoubt}". Presta especial atención a responder a esto.`
       : '';
 
+    const pdcHomeworkGuideline = config?.isPdcAdapted
+      ? `
+ADAPTACIÓN CURRICULAR PDC (DIVERSIFICACIÓN CURRICULAR / REFUERZO EDUCATIVO):
+- El alumno cursa PDC o requiere adaptación curricular.
+- Metodología de LECTURA FÁCIL: explica la resolución paso a paso de forma sumamente nítida, sin saltarte ningún paso ni cálculo elemental.
+- Define claramente qué significa cada número o variable.
+- Incluye consejos muy visuales y directos para que aprenda el método.`
+      : '';
+
     const systemPrompt = `Eres un tutor pedagógico de élite y profesor particular paciente, riguroso y didáctico para estudiantes de todos los niveles.
 Tu misión es:
 1. Analizar minuciosamente la imagen o texto del ejercicio/problema de deberes que sube el estudiante.
@@ -897,6 +932,8 @@ Tu misión es:
 ${subjectHint}
 ${levelHint}
 ${doubtHint}
+${config?.isPdcAdapted ? '- MODO ADAPTADO A PDC (Diversificación Curricular): ACTIVO' : ''}
+${pdcHomeworkGuideline}
 
 IMPORTANTE: Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta:
 {
@@ -1020,6 +1057,7 @@ IMPORTANTE: Responde ÚNICAMENTE con un objeto JSON válido con esta estructura 
         : undefined,
       exerciseImageUrl: previewUrl,
       additionalNotes: config?.specificDoubt,
+      isPdcAdapted: Boolean(config?.isPdcAdapted),
     };
 
     return solution;
@@ -1139,7 +1177,8 @@ Instrucciones para el tutor:
     level: EducationalLevel = 'Bachillerato',
     materials: UploadedMaterial[] = [],
     count = 8,
-    additionalInstructions = ''
+    additionalInstructions = '',
+    isPdcAdapted = false
   ): Promise<FlashcardDeck> {
     const contents: any[] = [];
 
@@ -1177,6 +1216,15 @@ Instrucciones para el tutor:
       }
     }
 
+    const pdcFlashcardGuideline = isPdcAdapted
+      ? `
+ADAPTACIÓN CURRICULAR PDC (DIVERSIFICACIÓN CURRICULAR / REFUERZO EDUCATIVO):
+- Diseñadas para alumnos de PDC o con adaptación curricular en ESO.
+- Metodología de LECTURA FÁCIL: anverso con pregunta concisa y directa sin rodeos.
+- Reverso con respuesta sintética, clara y destacando la idea central en negrita.
+- Pista ("hint") siempre presente, orientativa y didáctica para activar el recuerdo.`
+      : '';
+
     const systemPrompt = `Eres un pedagogo experto en técnicas de estudio activo, memoria espaciada (Spaced Repetition) y diseño de tarjetas didácticas (Flashcards).
 Tu objetivo es generar exactamente ${count} tarjetas de memoria interactivas de alto rendimiento para el tema "${topic}" de la asignatura "${subject}" (Nivel: "${level}").
 Idioma obligatorio: Español.
@@ -1186,7 +1234,9 @@ Criterios para las tarjetas:
 2. El reverso ("back") debe contener la respuesta clara, estructurada, sintética y fácil de asimilar.
 3. Incluye una categoría ("category") como: "Concepto Clave", "Fórmula", "Definición", "Causa-Efecto" o "Dato Clave".
 4. Incluye una pista opcional ("hint") para desbloquear el recuerdo.
-${additionalInstructions ? `Instrucciones adicionales del alumno: "${additionalInstructions}"` : ''}`;
+${isPdcAdapted ? '- MODO ADAPTADO A PDC (Diversificación Curricular): ACTIVO' : ''}
+${additionalInstructions ? `Instrucciones adicionales del alumno: "${additionalInstructions}"` : ''}
+${pdcFlashcardGuideline}`;
 
     const userPromptText = `Por favor, genera ${count} tarjetas de memoria en formato JSON con la siguiente estructura:
 {
@@ -1272,6 +1322,7 @@ Devuelve únicamente el objeto JSON válido.`;
         }
       ],
       createdAt: new Date().toISOString(),
+      isPdcAdapted: Boolean(isPdcAdapted),
     };
   },
 
@@ -1283,14 +1334,15 @@ Devuelve únicamente el objeto JSON válido.`;
     messages: Array<{ role: 'user' | 'model'; content: string }>,
     subject?: string,
     level?: string,
-    topic?: string
+    topic?: string,
+    isPdcAdapted = false
   ): Promise<string> {
     // 1. First try server-side /api/chat route
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages, subject, level, topic }),
+        body: JSON.stringify({ messages, subject, level, topic, isPdcAdapted }),
       });
 
       if (res.ok) {
@@ -1302,12 +1354,25 @@ Devuelve únicamente el objeto JSON válido.`;
     }
 
     // 2. Client-side fallback if backend is unavailable
+    const pdcChatGuideline = isPdcAdapted
+      ? `
+ADAPTACIÓN CURRICULAR PDC (DIVERSIFICACIÓN CURRICULAR / REFUERZO EDUCATIVO):
+- El alumno cursa PDC o requiere adaptación curricular.
+- Metodología de LECTURA FÁCIL: frases cortas, lenguaje directo y sin tecnicismos innecesarios.
+- Desglosa cualquier explicación en pasos numerados sencillos (Paso 1, Paso 2...).
+- Usa analogías cotidianas y ejemplos tangibles.
+- En ciencias o matemáticas, detalla cada cálculo sin obviar pasos intermedios.
+- Aporta refuerzo positivo constante.`
+      : '';
+
     const systemPrompt = `Eres el Tutor IA y Profesor Particular de Testify, un asistente pedagógico de excelencia.
 Tu objetivo es responder de forma clara, amena, rigurosa y muy didáctica a cualquier pregunta o duda académica de los estudiantes, SIN necesidad de que adjunten fotos.
 Idioma obligatorio: Español.
 ${subject ? `- Materia/Asignatura: "${subject}"` : '- Materia: General'}
 ${level ? `- Nivel: "${level}"` : ''}
 ${topic ? `- Tema: "${topic}"` : ''}
+${isPdcAdapted ? '- MODO ADAPTADO A PDC (Diversificación Curricular): ACTIVO' : ''}
+${pdcChatGuideline}
 
 DIRECTRICES:
 1. Responde con paciencia pedagógica, estructurando las explicaciones paso a paso.
