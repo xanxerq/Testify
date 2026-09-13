@@ -111,6 +111,13 @@ export const HomeworkSolverView: React.FC<HomeworkSolverViewProps> = ({
 
   const { isPdcActive } = usePdc();
 
+  // Enforce ESO level when PDC is active (LOMLOE constraint)
+  useEffect(() => {
+    if (isPdcActive) {
+      setLevel('Secundaria (ESO)');
+    }
+  }, [isPdcActive]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -566,17 +573,27 @@ ${currentSolution.commonMistakes.join('\n- ')}`;
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Nivel Educativo
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span>Nivel Educativo</span>
+                    {isPdcActive && (
+                      <span className="text-[10px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                        Fijado a ESO por PDC
+                      </span>
+                    )}
                   </label>
                   <select
                     value={level}
+                    disabled={isPdcActive}
                     onChange={(e) => setLevel(e.target.value as EducationalLevel)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className={`w-full px-3 py-2 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
+                      isPdcActive
+                        ? 'bg-amber-50 border-amber-300 text-amber-950 font-bold cursor-not-allowed'
+                        : 'border-slate-300 bg-white text-slate-800'
+                    }`}
                   >
                     {EDUCATIONAL_LEVELS.map((lvl) => (
-                      <option key={lvl} value={lvl}>
-                        {lvl}
+                      <option key={lvl} value={lvl} disabled={isPdcActive && lvl !== 'Secundaria (ESO)'}>
+                        {lvl} {isPdcActive && lvl !== 'Secundaria (ESO)' ? '(Solo ESO en PDC)' : ''}
                       </option>
                     ))}
                   </select>

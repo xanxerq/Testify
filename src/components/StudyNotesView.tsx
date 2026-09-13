@@ -140,6 +140,13 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
 
   const { isPdcActive } = usePdc();
 
+  // Enforce ESO level when PDC is active (LOMLOE constraint)
+  React.useEffect(() => {
+    if (isPdcActive) {
+      setLevel('Secundaria (ESO)');
+    }
+  }, [isPdcActive]);
+
   // Form states (completely empty by default, no prefilled text)
   const [subject, setSubject] = useState('');
   const [topic, setTopic] = useState('');
@@ -567,6 +574,30 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
           </div>
 
           <form onSubmit={handleGenerate} className="space-y-6">
+            {/* PRIMER CONTROL: Adaptación Curricular PDC (Solo ESO) */}
+            <div className="bg-gradient-to-r from-amber-50 via-amber-100/50 to-amber-50 rounded-2xl border-2 border-amber-300 p-4 sm:p-5 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <PdcAdaptationButton variant="pill" showTooltip={true} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-amber-950 uppercase tracking-wide">
+                        {isPdcActive ? 'Adaptación PDC Activa (Fijado a ESO)' : 'Adaptación Curricular PDC'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500 text-white">
+                        Solo ESO
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-900/90 mt-0.5">
+                      {isPdcActive
+                        ? 'Los apuntes se redactarán en Lectura Fácil con resúmenes directos, glosarios y apoyos visuales para ESO.'
+                        : 'Activa para generar apuntes adaptados a alumnos con necesidades específicas de apoyo. Restringido por ley a la ESO.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Subject and Topic Card */}
             <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-5">
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -643,21 +674,37 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
                   <span>Nivel Académico del Alumno</span>
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-                  {EDUCATIONAL_LEVELS.map((lvl) => (
-                    <button
-                      key={lvl}
-                      type="button"
-                      onClick={() => setLevel(lvl)}
-                      className={`p-2 rounded-xl text-xs font-semibold text-center border transition-all ${
-                        level === lvl
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {lvl}
-                    </button>
-                  ))}
+                  {EDUCATIONAL_LEVELS.map((lvl) => {
+                    const isBlockedByPdc = isPdcActive && lvl !== 'Secundaria (ESO)';
+                    return (
+                      <button
+                        key={lvl}
+                        type="button"
+                        disabled={isBlockedByPdc}
+                        onClick={() => {
+                          if (isBlockedByPdc) return;
+                          setLevel(lvl);
+                        }}
+                        className={`p-2 rounded-xl text-xs font-semibold text-center border transition-all ${
+                          isBlockedByPdc
+                            ? 'opacity-35 bg-slate-100 text-slate-400 border-dashed border-slate-300 cursor-not-allowed line-through'
+                            : level === lvl
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                        title={isBlockedByPdc ? 'La adaptación PDC solo es válida en ESO (LOMLOE)' : undefined}
+                      >
+                        {lvl}
+                      </button>
+                    );
+                  })}
                 </div>
+                {isPdcActive && (
+                  <p className="mt-2 text-xs font-semibold text-amber-900 bg-amber-50 p-2.5 rounded-xl border border-amber-300 flex items-center gap-2">
+                    <span>ℹ️</span>
+                    <span>Adaptación PDC activa: Nivel fijado exclusivamente en <strong>Secundaria (ESO)</strong> conforme al marco normativo LOMLOE.</span>
+                  </p>
+                )}
               </div>
             </div>
 

@@ -85,6 +85,13 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
   const { isPdcActive } = usePdc();
 
+  // Enforce ESO level when PDC is active (LOMLOE rule)
+  useEffect(() => {
+    if (isPdcActive) {
+      setLevel('Secundaria (ESO)');
+    }
+  }, [isPdcActive]);
+
   // Integrated Chatbot modal / side panel state
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'model'; content: string }>>([]);
@@ -272,7 +279,25 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
   // VIEW 1: Empty state -> Clean form to create deck
   if (!deck || deck.cards.length === 0) {
     return (
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12 animate-fadeIn">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-10 animate-fadeIn">
+        {/* PRIMER CONTROL DE TODOS: Adaptación Curricular PDC (Solo ESO) */}
+        <div className="mb-5 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-amber-100/60 to-amber-50 border-2 border-amber-300 shadow-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <PdcAdaptationButton variant="pill" showTooltip={true} />
+            <div>
+              <span className="text-xs font-black text-amber-950 block">
+                {isPdcActive ? 'Adaptación PDC Activa (Fijado a ESO)' : 'Adaptación Curricular PDC'}
+              </span>
+              <span className="text-[11px] text-amber-900/80">
+                {isPdcActive ? 'Tarjetas redactadas en lectura fácil para ESO' : 'Exclusivo para ESO (LOMLOE)'}
+              </span>
+            </div>
+          </div>
+          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-white shrink-0">
+            Solo ESO
+          </span>
+        </div>
+
         <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-sm space-y-6">
           {/* Header */}
           <div className="text-center pb-2 border-b border-slate-100">
@@ -285,9 +310,6 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
             <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-md mx-auto">
               Escribe tu asignatura y tema para generar tarjetas interactivas de estudio activo y memoria espaciada con IA.
             </p>
-            <div className="flex justify-center mt-3">
-              <PdcAdaptationButton variant="pill" showTooltip={true} />
-            </div>
           </div>
 
           {formError && (
@@ -333,17 +355,27 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({
             {/* Nivel Educativo y Cantidad de tarjetas */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Nivel Educativo
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Nivel Educativo</span>
+                  {isPdcActive && (
+                    <span className="text-[10px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                      Fijado a ESO por PDC
+                    </span>
+                  )}
                 </label>
                 <select
                   value={level}
+                  disabled={isPdcActive}
                   onChange={(e) => setLevel(e.target.value as EducationalLevel)}
-                  className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                  className={`w-full px-3.5 py-3 rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 ${
+                    isPdcActive
+                      ? 'bg-amber-50 border border-amber-300 text-amber-950 font-bold cursor-not-allowed'
+                      : 'bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white'
+                  }`}
                 >
                   {EDUCATIONAL_LEVELS.map((lvl) => (
-                    <option key={lvl} value={lvl}>
-                      {lvl}
+                    <option key={lvl} value={lvl} disabled={isPdcActive && lvl !== 'Secundaria (ESO)'}>
+                      {lvl} {isPdcActive && lvl !== 'Secundaria (ESO)' ? '(Solo ESO en PDC)' : ''}
                     </option>
                   ))}
                 </select>

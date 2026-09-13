@@ -211,6 +211,9 @@ export const ExamResults: React.FC<ExamResultsProps> = ({
         {/* Action Controls */}
         <div className="mt-6 pt-5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
+            {/* PRIMER BOTÓN DE TODOS: Adaptación PDC */}
+            <PdcAdaptationButton variant="pill" showTooltip={true} />
+
             <button
               id="btn-retake-exam"
               type="button"
@@ -275,8 +278,6 @@ export const ExamResults: React.FC<ExamResultsProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <PdcAdaptationButton variant="pill" showTooltip={true} />
-
             <button
               id="btn-new-exam"
               type="button"

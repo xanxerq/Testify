@@ -122,19 +122,25 @@ export const PdcAdaptationButton: React.FC<PdcAdaptationButtonProps> = ({
               onClick={handleToggle}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer ${
                 active
-                  ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                  : 'bg-slate-100 hover:bg-amber-50 text-slate-800 border border-slate-200 hover:border-amber-300'
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-200'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-950 border-2 border-amber-300 hover:border-amber-400'
               }`}
             >
               {active ? (
                 <>
                   <Check className="w-3.5 h-3.5" />
                   <span>Adaptación PDC: SÍ</span>
+                  <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-700 text-[10px] text-amber-100 font-extrabold uppercase">
+                    Solo ESO
+                  </span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                   <span>Adaptación PDC</span>
+                  <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-200/80 text-[10px] text-amber-900 font-extrabold uppercase">
+                    Solo ESO
+                  </span>
                 </>
               )}
             </button>
@@ -144,27 +150,34 @@ export const PdcAdaptationButton: React.FC<PdcAdaptationButtonProps> = ({
     );
   }
 
-  // Default: pill / button
+  // Default: pill / button (PRIMER BOTÓN DE TODOS)
   return (
-    <div className={`inline-flex items-center gap-1.5 ${className}`}>
+    <div className={`inline-flex items-center gap-1 ${className}`}>
       <button
         type="button"
         id="btn-toggle-pdc-adaptation"
         onClick={handleToggle}
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer ${
           active
-            ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200/50'
-            : 'bg-amber-50/90 hover:bg-amber-100 text-amber-900 border border-amber-300/80 hover:border-amber-400'
+            ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-amber-300/60 ring-2 ring-amber-400/50'
+            : 'bg-amber-50/95 hover:bg-amber-100 text-amber-950 border-2 border-amber-300 hover:border-amber-400 shadow-2xs'
         }`}
         title={
           active
-            ? 'Adaptación PDC activa. Pulsa para desactivar.'
-            : 'Adaptación PDC: pulsa para activar explicaciones, preguntas y temarios adaptados.'
+            ? 'Adaptación PDC activa (restringido exclusivamente a Secundaria ESO). Pulsa para desactivar.'
+            : 'Adaptación PDC: pulsa para activar exámenes, apuntes y respuestas adaptadas (exclusivo para ESO).'
         }
       >
         <HeartHandshake className={`w-3.5 h-3.5 ${active ? 'text-white' : 'text-amber-600'} shrink-0`} />
-        <span className="whitespace-nowrap font-bold">
+        <span className="whitespace-nowrap font-extrabold">
           {active ? 'Adaptación PDC: SÍ' : 'Adaptación PDC'}
+        </span>
+        <span
+          className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider ${
+            active ? 'bg-amber-700/80 text-white' : 'bg-amber-200 text-amber-950'
+          }`}
+        >
+          Solo ESO
         </span>
         {active && (
           <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
@@ -175,8 +188,8 @@ export const PdcAdaptationButton: React.FC<PdcAdaptationButtonProps> = ({
         <button
           type="button"
           onClick={openPdcInfoModal}
-          className="p-1.5 text-slate-400 hover:text-amber-600 transition-colors rounded-lg hover:bg-slate-100 cursor-pointer"
-          title="Ver detalles de la Adaptación Curricular PDC"
+          className="p-1.5 text-slate-400 hover:text-amber-700 transition-colors rounded-lg hover:bg-amber-50 cursor-pointer"
+          title="Ver detalles de la Adaptación Curricular PDC (Diversificación LOMLOE en ESO)"
         >
           <Info className="w-3.5 h-3.5" />
         </button>

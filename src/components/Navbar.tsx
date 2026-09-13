@@ -52,6 +52,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Center / Actions Navigation */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* PRIMER BOTÓN DE TODOS: Adaptación PDC (exclusivo para ESO) */}
+          <div className="flex items-center shrink-0">
+            <PdcAdaptationButton variant="pill" showTooltip={true} />
+          </div>
+
           <button
             id="nav-btn-new-exam"
             onClick={() => onNavigate('create')}
@@ -158,11 +163,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
           )}
-
-          {/* PDC Adaptation Button (accessible across entire platform) */}
-          <div className="flex items-center">
-            <PdcAdaptationButton variant="pill" />
-          </div>
 
           {/* User Auth Section */}
           {user ? (

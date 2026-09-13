@@ -10,6 +10,8 @@ interface PdcContextType {
   isPdcInfoModalOpen: boolean;
   openPdcInfoModal: () => void;
   closePdcInfoModal: () => void;
+  pdcToastMessage: string | null;
+  dismissPdcToast: () => void;
 }
 
 const PdcContext = createContext<PdcContextType | undefined>(undefined);
@@ -32,16 +34,30 @@ export const PdcProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [isPdcInfoModalOpen, setIsPdcInfoModalOpen] = useState(false);
+  const [pdcToastMessage, setPdcToastMessage] = useState<string | null>(null);
 
   const setPdcActive = (active: boolean) => {
     setIsPdcActiveState(active);
     try {
       localStorage.setItem('testify_pdc_active', active ? 'true' : 'false');
     } catch {}
+    if (active) {
+      setPdcToastMessage('Adaptación PDC activada. Exclusivo para Educación Secundaria Obligatoria (ESO).');
+      // Auto-hide toast after 6 seconds
+      setTimeout(() => {
+        setPdcToastMessage(null);
+      }, 6000);
+    } else {
+      setPdcToastMessage(null);
+    }
   };
 
   const togglePdc = () => {
     setPdcActive(!isPdcActive);
+  };
+
+  const dismissPdcToast = () => {
+    setPdcToastMessage(null);
   };
 
   const setIsEasyReading = (val: boolean) => {
@@ -80,6 +96,8 @@ export const PdcProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isPdcInfoModalOpen,
         openPdcInfoModal,
         closePdcInfoModal,
+        pdcToastMessage,
+        dismissPdcToast,
       }}
     >
       {children}
@@ -101,6 +119,8 @@ export function usePdc(): PdcContextType {
       isPdcInfoModalOpen: false,
       openPdcInfoModal: () => {},
       closePdcInfoModal: () => {},
+      pdcToastMessage: null,
+      dismissPdcToast: () => {},
     };
   }
   return context;

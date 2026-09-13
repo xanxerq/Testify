@@ -100,6 +100,14 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
 
   const { isPdcActive } = usePdc();
 
+  // Enforce ESO stage and level when PDC is active (LOMLOE: PDC is exclusively for ESO)
+  React.useEffect(() => {
+    if (isPdcActive) {
+      setSelectedStage('eso');
+      setLevel('Secundaria (ESO)');
+    }
+  }, [isPdcActive]);
+
   React.useEffect(() => {
     if (initialConfig) {
       if (initialConfig.subject) setSubject(initialConfig.subject);
@@ -307,6 +315,28 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      {/* Barra Principal de Control: Adaptación PDC (PRIMER BOTÓN DE TODOS) */}
+      <div className="mb-6 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-amber-100/60 to-amber-50 border-2 border-amber-300 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <PdcAdaptationButton variant="pill" showTooltip={true} />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-amber-950 uppercase tracking-wide">
+                {isPdcActive ? 'Adaptación PDC Activa (Bloqueado a ESO)' : 'Adaptación Curricular PDC'}
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500 text-white">
+                Solo ESO
+              </span>
+            </div>
+            <p className="text-xs text-amber-900/90 mt-0.5">
+              {isPdcActive
+                ? 'Con PDC activo, los exámenes se adaptan exclusivamente para Educación Secundaria Obligatoria (ESO) con enunciados directos, pautas paso a paso y lenguaje accesible.'
+                : 'Activa la adaptación PDC para alumnos con necesidades de apoyo curricular. Restringido por ley exclusivamente a la ESO (LOMLOE).'}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Intro Header con Título Visible y Descriptivo para SEO y Sistema Educativo de España */}
       <div className="text-center max-w-4xl mx-auto mb-8 sm:mb-10">
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200/80 text-indigo-800 text-xs font-semibold mb-3 shadow-2xs">
@@ -433,43 +463,67 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-1.5 bg-slate-100/80 rounded-2xl border border-slate-200/80">
             {SPANISH_STAGES.map((stg) => {
               const isActive = selectedStage === stg.id;
+              const isBlockedByPdc = isPdcActive && stg.id !== 'eso';
               return (
                 <button
                   key={stg.id}
                   type="button"
+                  disabled={isBlockedByPdc}
                   onClick={() => {
+                    if (isBlockedByPdc) return;
                     setSelectedStage(stg.id);
                     setLevel(stg.defaultLevel);
                     setSelectedQuickSubjectId(null);
                     if (validationError) setValidationError(null);
                   }}
                   className={`relative flex flex-col items-start text-left p-3 sm:p-3.5 rounded-xl transition-all ${
-                    isActive
+                    isBlockedByPdc
+                      ? 'opacity-40 bg-slate-200/50 border border-dashed border-slate-300 cursor-not-allowed'
+                      : isActive
                       ? 'bg-white text-slate-950 shadow-md ring-2 ring-indigo-500/20 border border-slate-200/90 scale-[1.01]'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 border border-transparent'
                   }`}
+                  title={
+                    isBlockedByPdc
+                      ? 'La adaptación PDC solo puede utilizarse en la ESO según normativa LOMLOE.'
+                      : undefined
+                  }
                 >
                   <div className="flex items-center justify-between w-full gap-2 mb-1">
-                    <span className={`text-sm font-black tracking-tight ${isActive ? 'text-indigo-600' : 'text-slate-800'}`}>
+                    <span className={`text-sm font-black tracking-tight ${isBlockedByPdc ? 'text-slate-400 line-through' : isActive ? 'text-indigo-600' : 'text-slate-800'}`}>
                       {stg.label}
                     </span>
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                        isActive
+                        isBlockedByPdc
+                          ? 'bg-rose-100 text-rose-700 font-black'
+                          : isActive
                           ? 'bg-indigo-50 text-indigo-700 border border-indigo-200/60'
                           : 'bg-slate-200/70 text-slate-600'
                       }`}
                     >
-                      {stg.badge}
+                      {isBlockedByPdc ? '🚫 Solo ESO' : stg.badge}
                     </span>
                   </div>
                   <p className="text-[11px] leading-snug text-slate-500 font-normal">
-                    {stg.sublabel}
+                    {isBlockedByPdc ? 'No disponible con PDC activo (solo ESO).' : stg.sublabel}
                   </p>
                 </button>
               );
             })}
           </div>
+
+          {/* Banner de Aviso de Restricción LOMLOE cuando PDC está activo */}
+          {isPdcActive && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-2.5 shadow-2xs">
+              <span className="text-base leading-none shrink-0 mt-0.5">ℹ️</span>
+              <div className="flex-1">
+                <span className="font-bold text-amber-950">Restricción de Nivel PDC:</span>{' '}
+                La ley LOMLOE regula el Programa de Diversificación Curricular (PDC) de forma{' '}
+                <strong>exclusiva para la Educación Secundaria Obligatoria (ESO)</strong>. Por eso, Bachillerato y PAU quedan deshabilitados automáticamente mientras esta opción esté activa.
+              </div>
+            </div>
+          )}
 
           {/* Chips y Tarjetas con las Materias Oficiales de la Etapa Seleccionada */}
           {(() => {

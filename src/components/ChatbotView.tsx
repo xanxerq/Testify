@@ -82,6 +82,13 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({
 
   const { isPdcActive } = usePdc();
 
+  // Enforce ESO level when PDC is active (LOMLOE rule)
+  useEffect(() => {
+    if (isPdcActive) {
+      setLevel('Secundaria (ESO)');
+    }
+  }, [isPdcActive]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -185,6 +192,9 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({
 
         {/* Configuration Bar: Subject & Level */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* PRIMER BOTÓN DE TODOS: Adaptación PDC (exclusivo para ESO) */}
+          <PdcAdaptationButton variant="pill" showTooltip={true} />
+
           <input
             type="text"
             value={subject}
@@ -195,18 +205,21 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({
 
           <select
             value={level}
+            disabled={isPdcActive}
             onChange={(e) => setLevel(e.target.value as EducationalLevel)}
-            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+              isPdcActive
+                ? 'bg-amber-50 border border-amber-300 text-amber-950 font-bold cursor-not-allowed'
+                : 'bg-slate-50 border border-slate-200 text-slate-700'
+            }`}
+            title={isPdcActive ? 'Nivel fijado en Secundaria (ESO) por la adaptación PDC' : 'Seleccionar nivel educativo'}
           >
             {COMMON_LEVELS.map((lvl) => (
-              <option key={lvl} value={lvl}>
-                {lvl}
+              <option key={lvl} value={lvl} disabled={isPdcActive && lvl !== 'Secundaria (ESO)'}>
+                {lvl} {isPdcActive && lvl !== 'Secundaria (ESO)' ? '(Solo ESO)' : ''}
               </option>
             ))}
           </select>
-
-          {/* PDC Adaptation Button in Chatbot */}
-          <PdcAdaptationButton variant="pill" showTooltip={true} />
 
           {messages.length > 0 && (
             <button

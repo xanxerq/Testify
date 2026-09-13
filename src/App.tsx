@@ -12,6 +12,7 @@ import { FlashcardsView } from './components/FlashcardsView';
 import { ChatbotView } from './components/ChatbotView';
 import { RoomLobbyModal } from './components/RoomLobbyModal';
 import { PdcInfoModal } from './components/PdcInfoModal';
+import { usePdc } from './context/PdcContext';
 import { authService } from './services/authService';
 import { geminiService } from './services/geminiService';
 import { historyService } from './services/historyService';
@@ -30,6 +31,7 @@ import {
 } from './types';
 
 export default function App() {
+  const { pdcToastMessage, dismissPdcToast } = usePdc();
   const [user, setUser] = useState<User | null>(() => authService.getCurrentUser());
   const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat'>('create');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -551,6 +553,33 @@ export default function App() {
 
       {/* PDC Curricular Adaptation Info & Settings Modal */}
       <PdcInfoModal />
+
+      {/* Floating PDC Mode Notification Toast */}
+      {pdcToastMessage && (
+        <aside aria-label="Aviso de adaptación PDC" className="fixed bottom-5 right-5 z-50 max-w-sm w-[calc(100vw-2.5rem)] animate-slideUp">
+          <div className="bg-amber-50 border-2 border-amber-400 p-4 rounded-2xl shadow-xl flex items-start justify-between gap-3 text-amber-950">
+            <div className="flex items-start gap-2.5">
+              <span className="text-xl shrink-0" aria-hidden="true">🎓</span>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-amber-800">
+                  Adaptación PDC (Solo ESO)
+                </p>
+                <p className="text-xs font-medium text-amber-900 mt-0.5">
+                  {pdcToastMessage}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={dismissPdcToast}
+              className="text-amber-600 hover:text-amber-900 p-1 rounded-lg hover:bg-amber-100 transition-colors shrink-0"
+              title="Cerrar aviso"
+            >
+              ✕
+            </button>
+          </div>
+        </aside>
+      )}
 
       {/* Clean Footer */}
       <footer className="border-t border-slate-200 bg-white/70 py-6 text-center text-xs text-slate-500">
