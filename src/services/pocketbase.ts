@@ -1,27 +1,20 @@
 const STORAGE_KEY_PB_URL = 'testify_pocketbase_url';
 const STORAGE_KEY_PB_TOKEN = 'testify_pocketbase_token';
 
+export const DEFAULT_SERVER_URL = 'https://temple-plc-merchandise-blocking.trycloudflare.com';
+
 /**
- * Resolves the active PocketBase server URL (from localStorage, env, or legacy config).
+ * Resolves the active database server URL (defaults permanently to user's server).
  */
 export function getPocketBaseUrl(): string {
   try {
     const stored = localStorage.getItem(STORAGE_KEY_PB_URL);
     if (stored && stored.trim()) return cleanUrl(stored);
 
-    // Check legacy homelab config
-    const legacyRaw = localStorage.getItem('testify_database_target_config');
-    if (legacyRaw) {
-      const parsed = JSON.parse(legacyRaw);
-      if (parsed.homelabUrl && parsed.homelabUrl.trim()) {
-        return cleanUrl(parsed.homelabUrl);
-      }
-    }
-
     const envUrl = (import.meta.env.VITE_POCKETBASE_URL || '').trim();
     if (envUrl) return cleanUrl(envUrl);
   } catch {}
-  return '';
+  return DEFAULT_SERVER_URL;
 }
 
 export function setPocketBaseUrl(url: string): void {

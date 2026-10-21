@@ -156,9 +156,9 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-slate-900">
-                  Base de Datos PocketBase (Servidor Linux)
+                  Panel de Base de Datos y Usuarios
                 </h2>
-                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 border border-violet-300">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
                   <ShieldCheck className="w-3.5 h-3.5" />
                   Acceso Administrador
                 </span>
@@ -240,7 +240,7 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
               <Users className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-xs text-slate-500 font-medium block">Usuarios en PocketBase</span>
+              <span className="text-xs text-slate-500 font-medium block">Total Usuarios</span>
               <span className="text-lg font-bold text-slate-900">{totalUsers}</span>
             </div>
           </div>
@@ -283,36 +283,36 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
             onClick={() => setActiveTab('users')}
             className={`pb-3 px-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'users'
-                ? 'border-violet-600 text-violet-700 font-bold'
+                ? 'border-indigo-600 text-indigo-700 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Usuarios de PocketBase ({users.length})</span>
+            <span>Usuarios ({users.length})</span>
           </button>
           <button
             id="admin-tab-exams"
             onClick={() => setActiveTab('exams')}
             className={`pb-3 px-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'exams'
-                ? 'border-violet-600 text-violet-700 font-bold'
+                ? 'border-indigo-600 text-indigo-700 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <GraduationCap className="w-4 h-4" />
-            <span>Exámenes y Evaluaciones ({examResults.length})</span>
+            <span>Evaluaciones Guardadas ({examResults.length})</span>
           </button>
           <button
             id="admin-tab-server"
             onClick={() => setActiveTab('server')}
             className={`pb-3 px-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'server'
-                ? 'border-violet-600 text-violet-700 font-bold'
+                ? 'border-indigo-600 text-indigo-700 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <Server className="w-4 h-4" />
-            <span>Servidor PocketBase Linux</span>
+            <span>Servidor y Conexión</span>
           </button>
         </div>
 
@@ -471,8 +471,8 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
                                 )}
                               </td>
                               <td className="py-3 px-4">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200 text-xs font-semibold">
-                                  PocketBase
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
+                                  Activo
                                 </span>
                               </td>
                               <td className="py-3 px-4 text-xs text-slate-500">
