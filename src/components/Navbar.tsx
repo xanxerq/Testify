@@ -193,7 +193,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               title="Panel de Base de Datos y Usuarios (Administrador)"
             >
               <Database className="w-4 h-4 text-amber-700" />
-              <span className="hidden sm:inline">Base de Datos</span>
+              <span className="hidden sm:inline">PocketBase</span>
               <span className="text-[10px] bg-amber-600 text-white px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
                 Admin
               </span>
@@ -202,11 +202,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="nav-btn-db-settings"
               onClick={onOpenDbSettings}
-              className="inline-flex items-center gap-1 px-2.5 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-indigo-700 hover:bg-slate-100 transition-colors"
-              title="Ajustes de Base de Datos, Servidor y Home Lab"
+              className="inline-flex items-center gap-1 px-2.5 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-violet-700 hover:bg-slate-100 transition-colors"
+              title="Ajustes del Servidor PocketBase"
             >
               <Database className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden xl:inline">BD / Servidor</span>
+              <span className="hidden xl:inline">PocketBase</span>
             </button>
           )}
 
@@ -222,7 +222,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">
+                  <div className="w-6 h-6 rounded-full bg-violet-600 text-white flex items-center justify-center text-xs font-bold">
                     {user.name.charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -236,10 +236,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ) : user.role === 'teacher' ? (
                   <span className="text-[10px] font-bold text-violet-800 bg-violet-100 px-1.5 py-0.5 rounded border border-violet-300 hidden sm:inline">
                     Docente
-                  </span>
-                ) : user.provider === 'google' ? (
-                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200/60 hidden sm:inline">
-                    Google
                   </span>
                 ) : null}
               </div>

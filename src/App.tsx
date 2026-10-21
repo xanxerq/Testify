@@ -64,7 +64,7 @@ export default function App() {
   const [presetExamConfig, setPresetExamConfig] = useState<Partial<ExamSetupConfig> | null>(null);
   const [presetMaterials, setPresetMaterials] = useState<UploadedMaterial[] | null>(null);
 
-  // Synchronize Supabase auth state automatically & check for room URL parameter (?room=...)
+  // Synchronize PocketBase auth state automatically & check for room URL parameter (?room=...)
   useEffect(() => {
     const unsubscribe = authService.listenAuthState((syncedUser) => {
       setUser(syncedUser);
@@ -557,7 +557,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Auth Modal (Google & Email/Password) */}
+      {/* PocketBase Auth Modal (Email & Password) */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
@@ -565,7 +565,7 @@ export default function App() {
         onOpenDbSettings={() => setIsDbSettingsOpen(true)}
       />
 
-      {/* Admin Database & Users Viewer Modal */}
+      {/* PocketBase Admin Database & Users Viewer Modal */}
       <AdminDatabaseModal
         isOpen={isAdminModalOpen}
         onClose={() => setIsAdminModalOpen(false)}
@@ -573,7 +573,7 @@ export default function App() {
         onOpenDbSettings={() => setIsDbSettingsOpen(true)}
       />
 
-      {/* Database & Home Lab Settings Modal */}
+      {/* PocketBase Server Settings Modal */}
       <DatabaseSettingsModal
         isOpen={isDbSettingsOpen}
         onClose={() => setIsDbSettingsOpen(false)}

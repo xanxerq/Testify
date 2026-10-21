@@ -679,7 +679,7 @@ DIRECTRICES PEDAGÓGICAS:
   }
 });
 
-// Endpoint: Test connection to Home Lab (Ubuntu Server on MacBook)
+// Endpoint: Test connection to Home Lab (PocketBase on Linux machine)
 app.post('/api/homelab/test-connection', async (req, res) => {
   try {
     const { serverUrl } = req.body;
@@ -687,20 +687,37 @@ app.post('/api/homelab/test-connection', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'URL del servidor no proporcionada' });
     }
 
-    let urlToPing = serverUrl.trim();
-    if (!urlToPing.startsWith('http://') && !urlToPing.startsWith('https://')) {
-      urlToPing = `https://${urlToPing}`;
+    let baseUrl = serverUrl.trim().replace(/\/$/, '');
+    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+      baseUrl = `https://${baseUrl}`;
     }
 
     const start = Date.now();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
+    const timer = setTimeout(() => controller.abort(), 8000);
 
-    const response = await fetch(urlToPing, {
-      method: 'GET',
-      signal: controller.signal,
-      headers: { Accept: 'application/json, text/plain, */*' },
-    });
+    // Try PocketBase official /api/health first
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/api/health`, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json, text/plain, */*',
+          'User-Agent': 'Mozilla/5.0 (compatible; TestifyApp/1.0)',
+        },
+      });
+    } catch {
+      // Fallback to base URL
+      response = await fetch(baseUrl, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json, text/plain, */*',
+          'User-Agent': 'Mozilla/5.0 (compatible; TestifyApp/1.0)',
+        },
+      });
+    }
     clearTimeout(timer);
 
     const latencyMs = Date.now() - start;
@@ -712,12 +729,14 @@ app.post('/api/homelab/test-connection', async (req, res) => {
         statusText: 'Bad Gateway',
         latencyMs,
         error:
-          'Error 502 Bad Gateway: El túnel de Cloudflare está activo, pero NO hay ningún servidor web o API respondiendo en el puerto local de tu Mac (o el servicio no está arrancado).',
+          'Error 502 Bad Gateway: El túnel de Cloudflare está activo, pero PocketBase NO está ejecutándose en tu Linux o no escucha en el puerto del túnel (ej. 8090).',
       });
     }
 
+    const isHealthy = response.ok || response.status === 200 || response.status === 404;
+
     return res.json({
-      ok: response.ok || response.status < 500,
+      ok: isHealthy,
       status: response.status,
       statusText: response.statusText,
       latencyMs,
@@ -727,7 +746,7 @@ app.post('/api/homelab/test-connection', async (req, res) => {
       ok: false,
       error:
         err.name === 'AbortError'
-          ? 'Tiempo de espera agotado (timeout de 6s). Verifica si el túnel está encendido y el MacBook activo.'
+          ? 'Tiempo de espera agotado (timeout de 8s). Verifica si el túnel está encendido y tu Linux activo.'
           : err.message,
     });
   }

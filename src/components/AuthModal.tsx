@@ -3,16 +3,21 @@ import {
   AlertCircle,
   Briefcase,
   CheckCircle2,
-  Database,
   GraduationCap,
   Lock,
   Mail,
-  School,
+  Server,
   Sparkles,
   User as UserIcon,
   X,
 } from 'lucide-react';
 import { authService } from '../services/authService';
+import {
+  getPocketBaseUrl,
+  setPocketBaseUrl,
+  isPocketBaseConfigured,
+  testPocketBase,
+} from '../services/pocketbase';
 import { User } from '../types';
 
 interface AuthModalProps {
@@ -38,13 +43,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [institution, setInstitution] = useState('');
   const [subjectArea, setSubjectArea] = useState('');
 
+  // PocketBase URL inline configuration if needed
+  const [serverUrlInput, setServerUrlInput] = useState(getPocketBaseUrl());
+  const [showServerConfig, setShowServerConfig] = useState(!isPocketBaseConfigured());
+
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
 
-  // Register with Firebase
+  const isServerConfigured = isPocketBaseConfigured();
+
+  // Save server URL
+  const handleSaveServerUrl = async () => {
+    if (!serverUrlInput.trim()) {
+      setError('Por favor, introduce la URL de tu túnel de Cloudflare hacia PocketBase.');
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const ping = await testPocketBase(serverUrlInput.trim());
+      if (ping.ok) {
+        setPocketBaseUrl(serverUrlInput.trim());
+        setShowServerConfig(false);
+        setSuccessMsg('¡Servidor PocketBase verificado y conectado!');
+        setTimeout(() => setSuccessMsg(null), 3000);
+      } else {
+        setError(ping.message || 'No se pudo conectar con PocketBase.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Register with PocketBase
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -76,16 +110,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onSuccess(res.user);
         onClose();
       } else {
-        setSuccessMsg(res.message || '¡Cuenta creada con éxito!');
+        setSuccessMsg(res.message || '¡Cuenta registrada con éxito en PocketBase!');
       }
     } catch (err: any) {
-      setError(err.message || 'Error al crear la cuenta. Inténtalo de nuevo.');
+      setError(err.message || 'Error al crear la cuenta en PocketBase.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Login with Firebase
+  // Login with PocketBase
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) {
@@ -105,22 +139,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       onSuccess(user);
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Google Login
-  const handleGoogleSignIn = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const user = await authService.signInWithGoogle(selectedRole);
-      onSuccess(user);
-      onClose();
-    } catch (err: any) {
-      setError(err.message || 'No se pudo completar el acceso con Google.');
+      setError(err.message || 'Error al iniciar sesión en PocketBase.');
     } finally {
       setLoading(false);
     }
@@ -145,7 +164,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors z-10"
+          className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors z-10 cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -161,9 +180,66 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
               {tab === 'login'
-                ? 'Accede a tus exámenes, apuntes y portal de profesorado'
-                : 'Guarda tus exámenes, historial y recursos didácticos'}
+                ? 'Accede con tu cuenta almacenada en PocketBase'
+                : 'Regístrate para guardar tus exámenes en tu base de datos'}
             </p>
+          </div>
+
+          {/* PocketBase Server Indicator / Inline Config */}
+          <div className="mb-4">
+            {isServerConfigured && !showServerConfig ? (
+              <div className="flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs text-emerald-900">
+                <div className="flex items-center gap-1.5 font-medium truncate">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <span className="font-bold">PocketBase:</span>
+                  <span className="truncate font-mono text-[11px] text-emerald-800">
+                    {getPocketBaseUrl().replace('https://', '')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowServerConfig(true)}
+                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline shrink-0 cursor-pointer ml-2"
+                >
+                  Cambiar
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 bg-violet-50/80 border border-violet-200 rounded-xl text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-violet-950 flex items-center gap-1">
+                    <Server className="w-3.5 h-3.5 text-violet-600" />
+                    <span>URL de tu PocketBase:</span>
+                  </span>
+                  {isServerConfigured && (
+                    <button
+                      type="button"
+                      onClick={() => setShowServerConfig(false)}
+                      className="text-[11px] text-slate-500 hover:text-slate-800 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={serverUrlInput}
+                    onChange={(e) => setServerUrlInput(e.target.value)}
+                    placeholder="https://xxxx.trycloudflare.com"
+                    className="flex-1 px-3 py-1.5 bg-white border border-violet-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveServerUrl}
+                    disabled={loading}
+                    className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer"
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Switch Tabs */}
@@ -230,49 +306,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <Briefcase className="w-4 h-4 text-violet-600" />
                 <span className="font-bold">Profesor / Docente</span>
               </button>
-            </div>
-            {selectedRole === 'teacher' && (
-              <p className="text-[11px] text-violet-700 mt-1.5 font-medium bg-violet-50 p-2 rounded-lg border border-violet-200/60">
-                ✨ Acceso a generación de exámenes de aula listos para imprimir con Modelo A/B, solucionarios oficiales y dinámicas en clase.
-              </p>
-            )}
-          </div>
-
-          {/* Google Sign-In Button */}
-          <div className="mb-4">
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={loading}
-              className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm shadow-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-60"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
-              </svg>
-              <span>Continuar con Google</span>
-            </button>
-            <div className="relative my-3 text-center">
-              <span className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-slate-200" />
-              </span>
-              <span className="relative px-3 bg-white text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
-                o con correo
-              </span>
             </div>
           </div>
 
@@ -391,9 +424,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : tab === 'login' ? (
-                'Iniciar Sesión'
+                'Iniciar Sesión en PocketBase'
               ) : (
-                selectedRole === 'teacher' ? 'Crear Cuenta Docente' : 'Crear Cuenta'
+                selectedRole === 'teacher' ? 'Crear Cuenta Docente en PocketBase' : 'Crear Cuenta en PocketBase'
               )}
             </button>
           </form>
@@ -424,24 +457,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </button>
             </div>
           </div>
-
-          {/* Enlace para configurar Base de Datos / Home Lab Ubuntu */}
-          {onOpenDbSettings && (
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500">¿Quieres conectar Supabase o tu MacBook?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenDbSettings();
-                }}
-                className="font-bold text-indigo-700 hover:text-indigo-900 underline flex items-center gap-1 cursor-pointer"
-              >
-                <Database className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Ajustes BD / Home Lab →</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>
