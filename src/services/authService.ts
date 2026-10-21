@@ -408,4 +408,149 @@ export const authService = {
 
     return true;
   },
+
+  // Update current user's profile (name, institution, department/subjectArea, avatar)
+  async updateUserProfile(data: {
+    name: string;
+    institution?: string;
+    department?: string;
+    avatar?: string;
+  }): Promise<User> {
+    const current = this.getCurrentUser();
+    if (!current) {
+      throw new Error('No hay ninguna sesión activa iniciada.');
+    }
+
+    const cleanName = data.name.trim();
+    if (!cleanName) {
+      throw new Error('El nombre no puede estar vacío.');
+    }
+
+    const updatedUser: User = {
+      ...current,
+      name: cleanName,
+      institution: data.institution !== undefined ? data.institution.trim() : current.institution,
+      subjectArea: data.department !== undefined ? data.department.trim() : (current.subjectArea || current.department),
+      department: data.department !== undefined ? data.department.trim() : (current.department || current.subjectArea),
+      avatar: data.avatar || current.avatar,
+    };
+
+    // Keep admin email protection
+    if (this.isAdminEmail(updatedUser.email)) {
+      updatedUser.role = 'admin';
+    }
+
+    // Persist locally
+    this.setCurrentUser(updatedUser);
+    this.saveKnownUser(updatedUser);
+
+    // Try patching in PocketBase
+    const pbUrl = getPocketBaseUrl();
+    const token = getPocketBaseToken();
+    if (pbUrl && current.id && !current.id.startsWith('guest_')) {
+      try {
+        const patchPayload: Record<string, any> = {
+          name: cleanName,
+          institution: updatedUser.institution || '',
+          subjectArea: updatedUser.department || updatedUser.subjectArea || '',
+        };
+        const res = await fetch(`${pbUrl}/api/collections/users/records/${current.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: token } : {}),
+          },
+          body: JSON.stringify(patchPayload),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          console.warn('PocketBase profile patch notice:', errData);
+        }
+      } catch (netErr) {
+        console.warn('Network issue patching PocketBase user profile:', netErr);
+      }
+    }
+
+    return updatedUser;
+  },
+
+  // Update current user's password in PocketBase
+  async updateUserPassword(data: {
+    oldPassword?: string;
+    newPassword: string;
+    passwordConfirm: string;
+  }): Promise<{ success: boolean; message: string }> {
+    const current = this.getCurrentUser();
+    if (!current) {
+      throw new Error('No hay ninguna sesión activa iniciada.');
+    }
+
+    if (!data.newPassword || data.newPassword.length < 6) {
+      throw new Error('La nueva contraseña debe tener al menos 6 caracteres.');
+    }
+
+    if (data.newPassword !== data.passwordConfirm) {
+      throw new Error('La nueva contraseña y la confirmación no coinciden.');
+    }
+
+    const pbUrl = getPocketBaseUrl();
+    const token = getPocketBaseToken();
+
+    if (current.id.startsWith('guest_')) {
+      return {
+        success: true,
+        message: 'Contraseña actualizada en el perfil de invitado.',
+      };
+    }
+
+    if (!pbUrl) {
+      throw new Error('No hay conexión con el servidor de base de datos.');
+    }
+
+    try {
+      const res = await fetch(`${pbUrl}/api/collections/users/records/${current.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: token } : {}),
+        },
+        body: JSON.stringify({
+          oldPassword: data.oldPassword || '',
+          password: data.newPassword,
+          passwordConfirm: data.passwordConfirm,
+        }),
+      });
+
+      const resData = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const oldPassErr = resData?.data?.oldPassword?.message;
+        const passErr = resData?.data?.password?.message;
+        const confirmErr = resData?.data?.passwordConfirm?.message;
+        const generic = resData?.message;
+
+        if (oldPassErr || generic?.toLowerCase().includes('old password') || generic?.toLowerCase().includes('oldpassword')) {
+          throw new Error('La contraseña actual es incorrecta. Por favor, verifícala.');
+        }
+        if (passErr) {
+          throw new Error(`Error en la nueva contraseña: ${passErr}`);
+        }
+        if (confirmErr) {
+          throw new Error(`Confirmación de contraseña inválida: ${confirmErr}`);
+        }
+        throw new Error(generic || 'No se pudo actualizar la contraseña en PocketBase.');
+      }
+
+      return {
+        success: true,
+        message: '¡Contraseña actualizada con éxito!',
+      };
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch') && !err.message.includes('Failed to fetch')) {
+        throw err;
+      }
+      throw new Error('Error de conexión con el servidor. Verifica tu enlace de PocketBase.');
+    }
+  },
 };

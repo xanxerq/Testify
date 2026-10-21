@@ -13,6 +13,7 @@ import { FlashcardsView } from './components/FlashcardsView';
 import { ChatbotView } from './components/ChatbotView';
 import { TeacherPortalView } from './components/TeacherPortalView';
 import { DatabaseSettingsModal } from './components/DatabaseSettingsModal';
+import { UserProfileModal } from './components/UserProfileModal';
 import { RoomLobbyModal } from './components/RoomLobbyModal';
 import { PdcInfoModal } from './components/PdcInfoModal';
 import { usePdc } from './context/PdcContext';
@@ -40,6 +41,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isDbSettingsOpen, setIsDbSettingsOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   // Chatbot state
   const [chatInitialSubject, setChatInitialSubject] = useState<string>('');
@@ -388,6 +390,7 @@ export default function App() {
           else setActiveView(view);
         }}
         onOpenAuth={() => setIsAuthModalOpen(true)}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
         onOpenAdmin={() => setIsAdminModalOpen(true)}
         onOpenDbSettings={() => setIsDbSettingsOpen(true)}
         onOpenRoomsModal={() => {
@@ -514,6 +517,7 @@ export default function App() {
           <TeacherPortalView
             user={user}
             onOpenAuth={() => setIsAuthModalOpen(true)}
+            onOpenProfile={() => setIsProfileModalOpen(true)}
             onLaunchLiveExam={(exam) => {
               setCurrentExam(exam);
               setIsRoomLobbyOpen(true);
@@ -563,6 +567,16 @@ export default function App() {
         onClose={() => setIsAuthModalOpen(false)}
         onSuccess={(loggedUser) => setUser(loggedUser)}
         onOpenDbSettings={() => setIsDbSettingsOpen(true)}
+      />
+
+      {/* User Profile, Password, Institution & Department Modal */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        currentUser={user}
+        onProfileUpdated={(updatedUser) => {
+          setUser(updatedUser);
+        }}
       />
 
       {/* PocketBase Admin Database & Users Viewer Modal */}

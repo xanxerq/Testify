@@ -17,6 +17,7 @@ export interface User {
   role: 'admin' | 'user' | 'teacher';
   institution?: string;
   subjectArea?: string;
+  department?: string;
   provider: 'google' | 'email';
   emailVerified: boolean;
   createdAt: string;

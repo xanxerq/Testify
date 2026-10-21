@@ -518,11 +518,11 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
                                 )}
                               </td>
                               <td className="py-3 px-4 text-xs text-slate-600">
-                                {u.institution || u.subjectArea ? (
+                                {u.institution || u.department || u.subjectArea ? (
                                   <span>
                                     {u.institution || ''}
-                                    {u.institution && u.subjectArea ? ' • ' : ''}
-                                    <span className="text-slate-500">{u.subjectArea || ''}</span>
+                                    {u.institution && (u.department || u.subjectArea) ? ' • ' : ''}
+                                    <span className="text-violet-700 font-medium">{u.department || u.subjectArea || ''}</span>
                                   </span>
                                 ) : (
                                   <span className="text-slate-400 italic">No especificado</span>

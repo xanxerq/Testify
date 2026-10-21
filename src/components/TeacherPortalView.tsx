@@ -56,6 +56,7 @@ import { PdcAdaptationButton } from './PdcAdaptationButton';
 interface TeacherPortalViewProps {
   user: User | null;
   onOpenAuth: () => void;
+  onOpenProfile?: () => void;
   onLaunchLiveExam?: (exam: Exam) => void;
 }
 
@@ -117,6 +118,7 @@ const ACTIVITY_TYPES: { type: ActivityType; label: string; desc: string; icon: s
 export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   user,
   onOpenAuth,
+  onOpenProfile,
   onLaunchLiveExam,
 }) => {
   const { isPdcActive } = usePdc();
@@ -509,6 +511,44 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               <span>Mis Recursos Guardados ({savedExams.length + savedActivities.length})</span>
             </button>
           </div>
+
+          {/* Teacher Profile & Department Quick Bar */}
+          {user && (
+            <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-white flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  Docente: {user.name}
+                </span>
+                {user.institution && (
+                  <span className="bg-white/10 px-2 py-0.5 rounded text-slate-200">
+                    Centro: {user.institution}
+                  </span>
+                )}
+                {user.department ? (
+                  <span className="bg-violet-500/30 text-violet-200 px-2 py-0.5 rounded border border-violet-400/30 font-bold">
+                    Depto: {user.department}
+                  </span>
+                ) : (
+                  <span className="text-violet-300/80 italic">
+                    (Sin departamento asignado)
+                  </span>
+                )}
+              </div>
+
+              {onOpenProfile && (
+                <button
+                  type="button"
+                  onClick={onOpenProfile}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors cursor-pointer"
+                  title="Modificar tu departamento docente, instituto o contraseña"
+                >
+                  <span>Editar departamento / perfil</span>
+                  <span>→</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Decorative background badges */}
