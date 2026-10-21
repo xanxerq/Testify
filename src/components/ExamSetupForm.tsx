@@ -6,6 +6,7 @@ import {
   Camera,
   Check,
   Clock,
+  ExternalLink,
   FileText,
   FileUp,
   GraduationCap,
@@ -16,6 +17,7 @@ import {
   Plus,
   Sliders,
   Sparkles,
+  Terminal,
   Trash2,
   UploadCloud,
   Users,
@@ -386,6 +388,25 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
               </button>
             </div>
           )}
+
+          {/* Acceso directo a Nexora OS (Distribución Linux que integra la app) */}
+          <a
+            href="https://nexora-os-project.vercel.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex flex-wrap items-center justify-center gap-2 p-1.5 sm:p-2 pr-3 sm:pr-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs sm:text-sm text-slate-100 shadow-xs hover:bg-slate-800 transition-all hover:scale-[1.01] group"
+            title="Conoce Nexora OS: Distribución Linux educativa con Testify integrado de forma nativa"
+          >
+            <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-extrabold text-[11px] uppercase tracking-wide border border-cyan-500/30 flex items-center gap-1">
+              <Terminal className="w-3 h-3 text-cyan-400" />
+              <span>Nexora OS</span>
+            </span>
+            <span className="text-slate-300">¿Sabías que Testify está integrado en la distribución <strong>Linux Nexora OS</strong>?</span>
+            <span className="font-bold text-cyan-400 group-hover:text-cyan-300 underline underline-offset-2 flex items-center gap-1 transition-colors ml-1">
+              <span>Ver Proyecto</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </span>
+          </a>
         </div>
       </div>
 

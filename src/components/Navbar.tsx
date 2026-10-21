@@ -1,5 +1,4 @@
-import React from 'react';
-import { BookOpen, Bot, Database, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, Sparkles, User as UserIcon, Users } from 'lucide-react';
+import { BookOpen, Bot, Database, ExternalLink, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, Sparkles, Terminal, User as UserIcon, Users } from 'lucide-react';
 import { User } from '../types';
 import { PdcAdaptationButton } from './PdcAdaptationButton';
 
@@ -147,6 +146,23 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Users className="w-4 h-4 text-indigo-600" />
             <span className="hidden sm:inline">Con Amigos</span>
           </button>
+
+          {/* Botón directo a Nexora OS (Distribución Linux que integra la app) */}
+          <a
+            id="nav-btn-nexora-os"
+            href="https://nexora-os-project.vercel.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98] border border-slate-700/80 shrink-0 group"
+            title="Conoce Nexora OS: Distribución Linux educativa que integra Testify de forma nativa"
+          >
+            <Terminal className="w-4 h-4 text-cyan-400 shrink-0 group-hover:text-cyan-300 transition-colors" />
+            <span className="hidden sm:inline font-bold tracking-tight">Nexora OS</span>
+            <span className="text-[10px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500/30">
+              Linux
+            </span>
+            <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-white transition-colors hidden sm:inline" />
+          </a>
 
           {/* Admin Database Viewer Button (shown for maruyalexander1@gmail.com / role === admin) */}
           {isAdmin && (

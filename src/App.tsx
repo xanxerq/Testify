@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ExternalLink, Terminal } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { AuthModal } from './components/AuthModal';
 import { AdminDatabaseModal } from './components/AdminDatabaseModal';
@@ -582,14 +583,36 @@ export default function App() {
       )}
 
       {/* Clean Footer */}
-      <footer className="border-t border-slate-200 bg-white/70 py-6 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p>
-            Generador de Exámenes con IA • Diseñado para ordenadores y dispositivos móviles
-          </p>
-          <p className="text-slate-400">
-            Sube tus apuntes en foto o PDF para estudiar con preguntas personalizadas
-          </p>
+      <footer className="border-t border-slate-200 bg-white/80 py-6 text-center text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 text-center sm:text-left">
+            <p className="font-medium text-slate-600">
+              Testify IA • Generador de Exámenes y Apuntes LOMLOE
+            </p>
+            <span className="hidden sm:inline text-slate-300">•</span>
+            <p className="text-slate-400">
+              Sube fotos o apuntes para estudiar con preguntas personalizadas
+            </p>
+          </div>
+
+          {/* Botón directo a Nexora OS */}
+          <div className="flex items-center gap-2">
+            <a
+              id="footer-btn-nexora-os"
+              href="https://nexora-os-project.vercel.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-100 font-semibold text-xs border border-slate-700/80 shadow-xs transition-all hover:scale-105 group"
+              title="Visita Nexora OS Project: Distribución Linux educativa"
+            >
+              <Terminal className="w-3.5 h-3.5 text-cyan-400 group-hover:text-cyan-300 transition-colors" />
+              <span>Disponible en <strong>Nexora OS</strong></span>
+              <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                Linux
+              </span>
+              <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-white transition-colors" />
+            </a>
+          </div>
         </div>
       </footer>
     </div>
