@@ -484,18 +484,29 @@ export const DatabaseSettingsModal: React.FC<DatabaseSettingsModalProps> = ({
                 </button>
               </div>
 
-              {/* Guía en 2 pasos para Ubuntu Server */}
+              {/* Guía para Cualquier Distribución Linux (Escritorio o Servidor) */}
               <div className="mt-4 pt-3 border-t border-violet-200/80">
                 <span className="block text-[11px] font-black uppercase tracking-wider text-violet-900 mb-2">
-                  Guía: Crear el Túnel en tu MacBook con Ubuntu Server (2 minutos)
+                  Guía: Conectar cualquier distribución Linux (Ubuntu, Mint, Debian, Arch, Nexora OS...)
                 </span>
                 <div className="p-3 bg-slate-900 rounded-xl text-slate-100 font-mono text-[11px] space-y-2">
-                  <p className="text-slate-400"># 1. Instalar Cloudflare Tunnel en Ubuntu Server:</p>
-                  <p className="text-cyan-300">sudo apt update && sudo apt install -y cloudflared</p>
-                  <p className="text-slate-400 mt-2"># 2. Iniciar túnel público gratuito hacia el puerto de tu app/base de datos (ej: 8080):</p>
+                  <p className="text-slate-400"># 1. Instalar Cloudflare Tunnel según tu gestor de paquetes:</p>
+                  <p className="text-cyan-300"># En Ubuntu / Debian / Mint / Nexora OS:</p>
+                  <p className="text-white">sudo apt update && sudo apt install -y cloudflared</p>
+                  <p className="text-cyan-300 mt-1"># En Arch / Manjaro: <span className="text-white">sudo pacman -S cloudflared</span></p>
+                  <p className="text-cyan-300 mt-1"># En Fedora: <span className="text-white">sudo dnf install -y cloudflared</span></p>
+
+                  <p className="text-slate-400 mt-3"># 2. Iniciar túnel seguro hacia el puerto de tu base de datos o API (ej: 8080 o 5432):</p>
                   <p className="text-emerald-300">cloudflared tunnel --url http://localhost:8080</p>
                   <p className="text-slate-400 text-[10px] italic">
-                    (La terminal te dará una URL tipo https://xxxx.trycloudflare.com. Pégala arriba en esta ventana y listo).
+                    (Copia la URL pública tipo https://xxxx.trycloudflare.com que aparece en pantalla y pégala arriba).
+                  </p>
+
+                  <p className="text-amber-400 mt-3 font-sans font-bold text-[11px]">
+                    ⚡ Consejo importante para Linux de escritorio en portátil:
+                  </p>
+                  <p className="text-slate-300 font-sans text-[11px] leading-relaxed">
+                    Para que no se apague al bajar la pantalla: en <em>Ajustes &gt; Energía</em> desmarca &quot;Suspender al cerrar la tapa&quot; (o en <code className="text-amber-300 font-mono">/etc/systemd/logind.conf</code> añade <code className="text-amber-300 font-mono">HandleLidSwitch=ignore</code>).
                   </p>
                 </div>
               </div>
