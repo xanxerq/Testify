@@ -1,15 +1,10 @@
 import { GoogleGenAI } from '@google/genai';
 import {
-  collection,
-  doc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  query,
-  where,
-} from 'firebase/firestore';
-import { db } from './firebase';
-import { getGeminiApiKey, GEMINI_TEXT_MODEL, isHighDemandOrTransientError } from './geminiService';
+  getGeminiApiKey,
+  GEMINI_TEXT_MODEL,
+  generateContentWithFallback,
+  isHighDemandOrTransientError,
+} from './geminiService';
 import {
   ClassroomActivity,
   ClassroomExam,
@@ -21,7 +16,6 @@ import {
 
 const STORAGE_KEY_TEACHER_EXAMS = 'testify_teacher_classroom_exams';
 const STORAGE_KEY_TEACHER_ACTIVITIES = 'testify_teacher_classroom_activities';
-const FIRESTORE_TEACHER_COLLECTION = 'teacher_materials';
 
 // Helper to clean JSON string from Gemini response
 function cleanJsonOutput(text: string): string {
@@ -32,6 +26,66 @@ function cleanJsonOutput(text: string): string {
     cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
   }
   return cleaned.trim();
+}
+
+/**
+ * Transforms uploaded materials (PDFs, images, text files) into Gemini-ready multimodal parts.
+ */
+function buildMultimodalParts(materials?: UploadedMaterial[]): any[] {
+  const parts: any[] = [];
+  if (!Array.isArray(materials) || materials.length === 0) return parts;
+
+  for (const mat of materials) {
+    if (!mat) continue;
+
+    // Plain text files
+    if (mat.type === 'text' || mat.mimeType === 'text/plain') {
+      let textBody = '';
+      if (mat.base64Data) {
+        try {
+          textBody = atob(mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim());
+        } catch {
+          textBody = mat.base64Data;
+        }
+      }
+      if (textBody && textBody.trim()) {
+        parts.push({
+          text: `[DOCUMENTO DE TEORÍA / ACTIVIDADES ADJUNTO - "${mat.name || 'Material'}"]:\n${textBody.trim()}`,
+        });
+      }
+      continue;
+    }
+
+    // Binary files (PDF or Images)
+    if (mat.base64Data) {
+      const cleanBase64 = mat.base64Data.replace(/^data:[^;]+;base64,/, '').trim();
+      if (!cleanBase64) continue;
+
+      let mimeType = (mat.mimeType || (mat.type === 'pdf' ? 'application/pdf' : 'image/jpeg')).toLowerCase();
+
+      // If marked as PDF but contains plaintext
+      if (mimeType === 'application/pdf' && !cleanBase64.startsWith('JVBERi')) {
+        try {
+          const decoded = atob(cleanBase64);
+          if (decoded && decoded.trim()) {
+            parts.push({
+              text: `[DOCUMENTO DE TEORÍA ADJUNTO - "${mat.name || 'Material'}"]:\n${decoded.trim()}`,
+            });
+            continue;
+          }
+        } catch {}
+      }
+
+      parts.push({
+        inlineData: {
+          mimeType,
+          data: cleanBase64,
+        },
+      });
+    }
+  }
+
+  return parts;
 }
 
 export const teacherService = {
@@ -50,20 +104,10 @@ export const teacherService = {
     }
 
     const ai = new GoogleGenAI({ apiKey });
+    const materialParts = buildMultimodalParts(materials);
+    const hasMaterials = materialParts.length > 0;
 
-    // Optional materials excerpt
-    let materialsContext = '';
-    if (materials && materials.length > 0) {
-      const textParts = materials
-        .filter((m) => m.type === 'text')
-        .map((m) => m.base64Data)
-        .join('\n\n');
-      if (textParts) {
-        materialsContext = `\n\nCONTENIDO ADJUNTO POR EL PROFESORADO:\n${textParts.slice(0, 30000)}`;
-      }
-    }
-
-    const prompt = `Eres un asesor pedagógico de alta dirección y profesor titular en España experto en el diseño de exámenes formales para centros educativos (LOMLOE, ESO, Bachillerato, FP y PAU).
+    const promptText = `Eres un asesor pedagógico de alta dirección y profesor titular en España experto en el diseño de exámenes formales para centros educativos (LOMLOE, ESO, Bachillerato, FP y PAU).
 
 Debes crear un EXAMEN ESCOLAR COMPLETO LISTO PARA EL AULA con su SOLUCIONARIO OFICIAL y RÚBRICA DOCENTE.
 
@@ -75,11 +119,11 @@ DATOS DEL EXAMEN:
 - Duración de la prueba: ${config.timeMinutes || 50} minutos
 - Preguntas tipo test (4 opciones): ${config.testCount}
 - Preguntas abiertas / desarrollo / problemas: ${config.openCount}
-- Generar Modelo B alternativo anti-copia: ${config.generateModelB ? 'SÍ (Permutar u ordenar de forma distinta las preguntas y las opciones de los test para que dos alumnos juntos no puedan copiarse)' : 'NO'}
+- Generar Modelo B alternativo anti-copia: ${config.generateModelB ? 'SÍ (Permutar u ordenar de forma distinta las preguntas y las opciones de los test para que dos alumnos contiguos no puedan copiarse)' : 'NO'}
 - Adaptación curricular (PDC / DUA): ${config.isPdcAdapted ? 'SÍ, aplicar pautas de accesibilidad cognitiva, enunciados claros sin ambigüedad y apoyo paso a paso' : 'Estándar LOMLOE'}
 - Datos del Centro: ${config.header.schoolName || 'Centro Educativo'} • ${config.header.department || 'Departamento'} • Curso: ${config.header.courseAndGroup || config.level}
 - Requisitos adicionales del profesor: ${config.customRequirements || 'Ninguno en particular'}
-${materialsContext}
+${hasMaterials ? '\nINSTRUCCIÓN PRIMORDIAL SOBRE MATERIALES ADJUNTOS:\nEl profesor ha subido un PDF o documentos de teoría / actividades. Utiliza EXCLUSIVAMENTE este material como fuente principal para las preguntas, ejercicios numéricos, problemas o cuestiones teóricas del examen.' : ''}
 
 INSTRUCCIONES DE DISEÑO:
 1. Las preguntas deben ser rigurosas, pedagógicamente impecables y adecuadas a la edad y nivel en España.
@@ -130,10 +174,11 @@ DEBES RESPONDER EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EX
   "pedagogicalNotes": "Consejos para el aula: Repartir el examen en silencio..."
 }`;
 
+    const contents = [...materialParts, { text: promptText }];
+
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_TEXT_MODEL,
-        contents: prompt,
+      const response = await generateContentWithFallback(ai, {
+        contents,
         config: {
           temperature: 0.3,
           responseMimeType: 'application/json',
@@ -188,9 +233,12 @@ DEBES RESPONDER EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EX
     }
 
     const ai = new GoogleGenAI({ apiKey });
+    const materialParts = buildMultimodalParts(materials);
+    const hasMaterials = materialParts.length > 0;
 
     const activityTypeLabels: Record<string, string> = {
       cooperative_group: 'Trabajo cooperativo en grupos con roles asignados (Coordinador, Secretario, Portavoz, Cronometrador)',
+      individual_work: 'Trabajo individual y autónomo (Ficha de ejercicios progresivos, autorregulación y autoevaluación)',
       classroom_quiz: 'Concurso / Quiz interactivo proyectable por equipos con tarjetas y puntuación',
       structured_debate: 'Debate estructurado con posturas asignadas, turnos cronometrados y moderación',
       case_study: 'Estudio de caso del mundo real y resolución grupal de retos',
@@ -198,7 +246,10 @@ DEBES RESPONDER EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EX
       escape_room: 'Escape Room educativo de aula con pistas, enigmas temáticos y código final',
     };
 
-    const prompt = `Eres un catedrático de didáctica y formador de profesorado en España, experto en metodologías activas y situaciones de aprendizaje (LOMLOE).
+    const isIndividual = config.type === 'individual_work';
+    const isQuiz = config.type === 'classroom_quiz';
+
+    const promptText = `Eres un catedrático de didáctica y formador de profesorado en España, experto en metodologías activas y situaciones de aprendizaje (LOMLOE).
 
 Crea una DINÁMICA DE AULA / ACTIVIDAD DE CLASE COMPLETA para que un profesor pueda aplicarla directamente en su sesión de clase.
 
@@ -208,15 +259,29 @@ DATOS DE LA ACTIVIDAD:
 - Tema: ${config.topic}
 - Nivel Educativo: ${config.level}
 - Duración de la sesión: ${config.durationMinutes || 45} minutos
-- Tamaño recomendado de grupos: ${config.groupSize || 4} alumnos por grupo
+${isIndividual ? '- Modalidad: TRABAJO INDIVIDUAL AUTÓNOMO (cada estudiante resuelve su propia ficha individualmente, no hay roles de grupo)' : ''}
+${isQuiz ? `- Configuración de Equipos para el Concurso:
+  * Alumnos totales en clase: ${config.totalStudents || 25}
+  * Número de equipos en el aula: ${config.teamCount || 5}
+  * Personas por equipo: ${config.studentsPerTeam || Math.ceil((config.totalStudents || 25) / (config.teamCount || 5))}
+  * Dinámica de competición: El aula compite dividida en estos ${config.teamCount || 5} equipos con marcador por rondas.` : ''}
+${!isIndividual && !isQuiz ? `- Tamaño recomendado de grupos: ${config.groupSize || 4} alumnos por grupo` : ''}
 - Objetivo didáctico: ${config.customGoal || 'Afianzar contenidos curriculares mediante participación activa'}
 - Adaptación DUA / Inclusión: ${config.isPdcAdapted ? 'Sí, adaptado a diversidad y PDC' : 'Estándar'}
+${hasMaterials ? '\nINSTRUCCIÓN PRIMORDIAL SOBRE EL PDF / MATERIAL ADJUNTO:\nEl docente ha subido un PDF o temario de teoría o actividades. Debes utilizar ESTE MATERIAL como la base directa para elaborar los ejercicios, preguntas, retos o casos de esta sesión.' : ''}
 
-INSTRUCCIONES CLAVE:
-1. Divide la sesión en fases cronometradas con minutos exactos (ej: Introducción y formación de equipos [5 min], Fase de investigación/reto [20 min], Puesta en común/debate [15 min], Conclusión y autoevaluación [5 min]).
+INSTRUCCIONES CLAVE DE DISEÑO:
+1. Divide la sesión en fases cronometradas con minutos exactos (ej: Introducción y activación [5 min], Fase central de trabajo o rondas [25 min], Puesta en común / corrección [10 min], Conclusión y autoevaluación [5 min]).
 2. Para cada fase describe qué hace el profesor (docente) y qué hacen los alumnos.
-3. Si es trabajo cooperativo, define claramente los 4 roles (Coordinador/a, Portavoz, Secretario/a, Controlador/a de tiempo y material).
-4. Genera una "Ficha Imprimible para el Alumnado" (printableStudentWorksheet) lista para fotocopiar con el título, instrucciones, preguntas y espacio de respuesta.
+${isIndividual ? `3. IMPORTANTE PARA TRABAJO INDIVIDUAL:
+- En "groupRoles", devuelve un array vacío [] porque los alumnos trabajan individualmente.
+- La "Ficha Imprimible para el Alumnado" (printableStudentWorksheet) debe ser una ficha de ejercicios individuales completa y lista para fotocopiar (Nombre y Apellidos del alumno, fecha, ejercicios graduados de menor a mayor complejidad, espacio para cálculos o respuestas y rúbrica de autoevaluación al final).` : ''}
+${isQuiz ? `3. IMPORTANTE PARA QUIZ / CONCURSO POR EQUIPOS:
+- En la ficha y en la guía del docente, incluye el "Marcador Oficial del Aula" preparado para anotar las puntuaciones de los ${config.teamCount || 5} equipos en cada ronda.
+- Diseña de 4 a 6 rondas de preguntas con diferentes niveles de puntos (ej: Ronda 1 Calentamiento: 10 pts, Ronda 2 Reto Rápido: 20 pts, Ronda 3 Pregunta Estrella: 30 pts).
+- Incluye hojas de respuesta o tarjetas para que los equipos muestren o entreguen sus respuestas.` : ''}
+${!isIndividual && !isQuiz ? `3. Si es trabajo cooperativo, define claramente los 4 roles (Coordinador/a, Portavoz, Secretario/a, Controlador/a de tiempo y material).` : ''}
+4. Genera una "Ficha Imprimible para el Alumnado" (printableStudentWorksheet) con el título, instrucciones, enunciados y espacio de respuesta.
 5. Genera la "Guía del Docente con Respuestas y Soluciones" (teacherAnswerKeyOrGuide).
 6. Incluye una Rúbrica de Evaluación con criterios observables.
 
@@ -226,20 +291,20 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
   "subtitle": "Subtítulo pedagógico breve",
   "targetCompetencies": ["CCL1", "STEM2", "CPSAA3", "CC4"],
   "estimatedMinutes": ${config.durationMinutes || 45},
-  "recommendedGroupSize": ${config.groupSize || 4},
-  "materialsNeeded": ["Ficha de trabajo impresa", "Bolígrafos de colores", "Pizarra digital", "Cronómetro"],
+  "recommendedGroupSize": ${isIndividual ? 1 : (isQuiz ? (config.studentsPerTeam || 4) : (config.groupSize || 4))},
+  "materialsNeeded": ["Ficha de trabajo impresa", "Bolígrafos", "Cronómetro"],
   "setupInstructions": "Pautas previas antes de empezar la clase...",
   "phases": [
     {
       "phaseNumber": 1,
-      "title": "Fase 1: Activación y formación de equipos",
+      "title": "Fase 1: Activación y preparación",
       "durationMinutes": 5,
-      "teacherAction": "El profesor proyecta el reto y organiza los grupos...",
-      "studentAction": "Los alumnos eligen sus roles y leen la consigna inicial..."
+      "teacherAction": "El profesor proyecta la consigna...",
+      "studentAction": "Los alumnos preparan su material..."
     }
   ],
   "groupRoles": [
-    {
+    ${isIndividual ? '' : `{
       "roleName": "Coordinador/a",
       "responsibilities": ["Moderar las intervenciones", "Asegurar que todos participan"]
     },
@@ -249,23 +314,24 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
     },
     {
       "roleName": "Portavoz",
-      "responsibilities": ["Presentar las conclusiones del equipo ante el resto de la clase"]
+      "responsibilities": ["Presentar las conclusiones del equipo"]
     },
     {
-      "roleName": "Controlador/a de Tiempo y Recursos",
+      "roleName": "Controlador/a de Tiempo",
       "responsibilities": ["Controlar que el grupo cumple los tiempos de cada fase"]
-    }
+    }`}
   ],
-  "deliverableOrProduct": "Descripción del producto que entregan al terminar (mural, informe, ficha o exposición oral)",
+  "deliverableOrProduct": "Descripción del producto que entregan al terminar",
   "evaluationRubric": "### Rúbrica de la Actividad\\n\\n...",
-  "printableStudentWorksheet": "### Ficha de Trabajo del Alumno\\n\\nNombre del Equipo: _____________________\\nMiembros: ______________________________\\n\\n1. Reto inicial...",
-  "teacherAnswerKeyOrGuide": "### Guía Didáctica y Solucionario del Docente\\n\\nRespuestas esperadas..."
+  "printableStudentWorksheet": "### Ficha de Trabajo\\n\\n...",
+  "teacherAnswerKeyOrGuide": "### Guía Didáctica y Solucionario del Docente\\n\\n..."
 }`;
 
+    const contents = [...materialParts, { text: promptText }];
+
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_TEXT_MODEL,
-        contents: prompt,
+      const response = await generateContentWithFallback(ai, {
+        contents,
         config: {
           temperature: 0.4,
           responseMimeType: 'application/json',
@@ -285,19 +351,23 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
         level: config.level,
         targetCompetencies: parsed.targetCompetencies || ['CCL1', 'STEM1', 'CPSAA1'],
         estimatedMinutes: parsed.estimatedMinutes || config.durationMinutes || 45,
-        recommendedGroupSize: parsed.recommendedGroupSize || config.groupSize || 4,
+        recommendedGroupSize: isIndividual ? 1 : (parsed.recommendedGroupSize || config.groupSize || 4),
+        totalStudents: isQuiz ? config.totalStudents : undefined,
+        teamCount: isQuiz ? config.teamCount : undefined,
+        studentsPerTeam: isQuiz ? config.studentsPerTeam : undefined,
         materialsNeeded: parsed.materialsNeeded || ['Ficha impresa', 'Material de escritura'],
-        setupInstructions: parsed.setupInstructions || 'Organizar las mesas en grupos de 4.',
+        setupInstructions: parsed.setupInstructions || (isIndividual ? 'Distribuir una ficha a cada estudiante.' : 'Organizar las mesas en equipos.'),
         phases: parsed.phases || [],
-        groupRoles: parsed.groupRoles || [],
-        deliverableOrProduct: parsed.deliverableOrProduct || 'Ficha de conclusiones de equipo',
-        evaluationRubric: parsed.evaluationRubric || 'Rúbrica de trabajo cooperativo.',
-        printableStudentWorksheet: parsed.printableStudentWorksheet || 'Ficha de trabajo para el alumno.',
+        groupRoles: isIndividual ? [] : (parsed.groupRoles || []),
+        deliverableOrProduct: parsed.deliverableOrProduct || (isIndividual ? 'Ficha individual resuelta' : 'Ficha de conclusiones de equipo'),
+        evaluationRubric: parsed.evaluationRubric || 'Rúbrica de evaluación.',
+        printableStudentWorksheet: parsed.printableStudentWorksheet || 'Ficha de trabajo.',
         teacherAnswerKeyOrGuide: parsed.teacherAnswerKeyOrGuide || 'Guía de observación para el profesor.',
         createdAt: new Date().toISOString(),
         isPdcAdapted: config.isPdcAdapted,
       };
 
+      // Auto-save to local history
       await this.saveClassroomActivity(activity);
 
       return activity;
@@ -306,12 +376,12 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
       if (isHighDemandOrTransientError(err)) {
         throw new Error('El modelo de IA está experimentando alta demanda. Espera unos segundos y vuelve a pulsar Generar.');
       }
-      throw new Error(err.message || 'Error al generar la actividad de aula con IA.');
+      throw new Error(err.message || 'Error al generar la actividad con IA.');
     }
   },
 
   // -------------------------------------------------------------
-  // ALMACENAMIENTO DE EXÁMENES DE PROFESORADO
+  // HISTORIAL Y GUARDADO LOCAL
   // -------------------------------------------------------------
   getSavedClassroomExams(): ClassroomExam[] {
     try {
@@ -324,43 +394,24 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 
   async saveClassroomExam(exam: ClassroomExam): Promise<void> {
     try {
-      const current = this.getSavedClassroomExams();
-      const updated = [exam, ...current.filter((e) => e.id !== exam.id)];
-      localStorage.setItem(STORAGE_KEY_TEACHER_EXAMS, JSON.stringify(updated));
+      const existing = this.getSavedClassroomExams();
+      const updated = [exam, ...existing.filter((e) => e.id !== exam.id)];
+      localStorage.setItem(STORAGE_KEY_TEACHER_EXAMS, JSON.stringify(updated.slice(0, 30)));
     } catch (e) {
-      console.error('Local save error for teacher exam:', e);
-    }
-
-    try {
-      await setDoc(doc(db, FIRESTORE_TEACHER_COLLECTION, exam.id), {
-        ...exam,
-        materialType: 'classroom_exam',
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.warn('Notice saving teacher exam to Firestore:', e);
+      console.warn('Notice saving classroom exam locally:', e);
     }
   },
 
   async deleteClassroomExam(id: string): Promise<void> {
     try {
-      const current = this.getSavedClassroomExams();
-      const updated = current.filter((e) => e.id !== id);
-      localStorage.setItem(STORAGE_KEY_TEACHER_EXAMS, JSON.stringify(updated));
+      const existing = this.getSavedClassroomExams();
+      const filtered = existing.filter((e) => e.id !== id);
+      localStorage.setItem(STORAGE_KEY_TEACHER_EXAMS, JSON.stringify(filtered));
     } catch (e) {
-      console.error('Local delete error:', e);
-    }
-
-    try {
-      await deleteDoc(doc(db, FIRESTORE_TEACHER_COLLECTION, id));
-    } catch (e) {
-      console.warn('Firestore delete notice:', e);
+      console.warn('Notice deleting classroom exam:', e);
     }
   },
 
-  // -------------------------------------------------------------
-  // ALMACENAMIENTO DE ACTIVIDADES DE CLASE
-  // -------------------------------------------------------------
   getSavedClassroomActivities(): ClassroomActivity[] {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_TEACHER_ACTIVITIES);
@@ -372,37 +423,21 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 
   async saveClassroomActivity(activity: ClassroomActivity): Promise<void> {
     try {
-      const current = this.getSavedClassroomActivities();
-      const updated = [activity, ...current.filter((a) => a.id !== activity.id)];
-      localStorage.setItem(STORAGE_KEY_TEACHER_ACTIVITIES, JSON.stringify(updated));
+      const existing = this.getSavedClassroomActivities();
+      const updated = [activity, ...existing.filter((a) => a.id !== activity.id)];
+      localStorage.setItem(STORAGE_KEY_TEACHER_ACTIVITIES, JSON.stringify(updated.slice(0, 30)));
     } catch (e) {
-      console.error('Local save error for activity:', e);
-    }
-
-    try {
-      await setDoc(doc(db, FIRESTORE_TEACHER_COLLECTION, activity.id), {
-        ...activity,
-        materialType: 'classroom_activity',
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.warn('Notice saving teacher activity to Firestore:', e);
+      console.warn('Notice saving classroom activity locally:', e);
     }
   },
 
   async deleteClassroomActivity(id: string): Promise<void> {
     try {
-      const current = this.getSavedClassroomActivities();
-      const updated = current.filter((a) => a.id !== id);
-      localStorage.setItem(STORAGE_KEY_TEACHER_ACTIVITIES, JSON.stringify(updated));
+      const existing = this.getSavedClassroomActivities();
+      const filtered = existing.filter((a) => a.id !== id);
+      localStorage.setItem(STORAGE_KEY_TEACHER_ACTIVITIES, JSON.stringify(filtered));
     } catch (e) {
-      console.error('Local delete error:', e);
-    }
-
-    try {
-      await deleteDoc(doc(db, FIRESTORE_TEACHER_COLLECTION, id));
-    } catch (e) {
-      console.warn('Firestore delete notice:', e);
+      console.warn('Notice deleting classroom activity:', e);
     }
   },
 };

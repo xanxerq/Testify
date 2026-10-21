@@ -300,6 +300,9 @@ export const authService = {
     const pbUrl = getPocketBaseUrl();
     if (!pbUrl) return list;
 
+    const overridesRaw = localStorage.getItem('testify_role_overrides');
+    const overrides = overridesRaw ? JSON.parse(overridesRaw) : {};
+
     try {
       const token = getPocketBaseToken();
       const res = await fetch(`${pbUrl}/api/collections/users/records?perPage=200`, {
@@ -314,6 +317,11 @@ export const authService = {
         const data = await res.json();
         const items = data.items || [];
         items.forEach((rec: any) => {
+          const overrideRole = overrides[rec.id] || overrides[(rec.email || '').toLowerCase()];
+          const finalRole = this.isAdminEmail(rec.email)
+            ? 'admin'
+            : (overrideRole || rec.role || 'user');
+
           const userObj: User = {
             id: rec.id,
             name: rec.name || rec.email?.split('@')[0] || 'Usuario PocketBase',
@@ -321,7 +329,7 @@ export const authService = {
             avatar: rec.avatar
               ? `${pbUrl}/api/files/_pb_users_auth_/${rec.id}/${rec.avatar}`
               : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(rec.id)}`,
-            role: this.isAdminEmail(rec.email) ? 'admin' : (rec.role || 'user'),
+            role: finalRole,
             institution: rec.institution,
             subjectArea: rec.subjectArea,
             provider: 'email',
@@ -344,6 +352,60 @@ export const authService = {
       console.warn('Could not query PocketBase users collection:', err);
     }
 
-    return list;
+    // Apply any overrides to existing list items
+    return list.map((u) => {
+      if (this.isAdminEmail(u.email)) return { ...u, role: 'admin' };
+      const overrideRole = overrides[u.id] || overrides[u.email.toLowerCase()];
+      if (overrideRole) return { ...u, role: overrideRole };
+      return u;
+    });
+  },
+
+  // Admin: Update user role in PocketBase and local database
+  async updateUserRole(userId: string, newRole: 'user' | 'teacher' | 'admin'): Promise<boolean> {
+    const list = this.getKnownUsers();
+    const targetIdx = list.findIndex((u) => u.id === userId);
+    if (targetIdx >= 0) {
+      list[targetIdx].role = newRole;
+      localStorage.setItem(STORAGE_KEY_KNOWN_USERS, JSON.stringify(list));
+    }
+
+    // Save in persistent role overrides
+    try {
+      const overridesRaw = localStorage.getItem('testify_role_overrides') || '{}';
+      const overrides = JSON.parse(overridesRaw);
+      overrides[userId] = newRole;
+      if (targetIdx >= 0 && list[targetIdx].email) {
+        overrides[list[targetIdx].email.toLowerCase()] = newRole;
+      }
+      localStorage.setItem('testify_role_overrides', JSON.stringify(overrides));
+    } catch {}
+
+    // Update active user if it's the current user
+    const current = this.getCurrentUser();
+    if (current && (current.id === userId || (targetIdx >= 0 && list[targetIdx].email.toLowerCase() === current.email.toLowerCase()))) {
+      current.role = newRole;
+      this.setCurrentUser(current);
+    }
+
+    // Try patching in PocketBase collection 'users'
+    const pbUrl = getPocketBaseUrl();
+    if (pbUrl) {
+      try {
+        const token = getPocketBaseToken();
+        await fetch(`${pbUrl}/api/collections/users/records/${userId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: token } : {}),
+          },
+          body: JSON.stringify({ role: newRole }),
+        });
+      } catch (err) {
+        console.warn('Notice updating role in PocketBase:', err);
+      }
+    }
+
+    return true;
   },
 };

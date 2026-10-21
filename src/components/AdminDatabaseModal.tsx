@@ -52,6 +52,8 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
     latencyMs?: number;
   } | null>(null);
   const [pinging, setPinging] = useState(false);
+  const [roleUpdateToast, setRoleUpdateToast] = useState<string | null>(null);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   const pbUrl = getPocketBaseUrl();
 
@@ -70,6 +72,33 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
       console.error('Error fetching PocketBase records:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Change user role from admin panel
+  const handleRoleChange = async (
+    userId: string,
+    newRole: 'user' | 'teacher' | 'admin',
+    userName: string
+  ) => {
+    setUpdatingUserId(userId);
+    try {
+      await authService.updateUserRole(userId, newRole);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+      );
+      const roleName =
+        newRole === 'admin'
+          ? 'Administrador'
+          : newRole === 'teacher'
+          ? 'Profesor / Docente'
+          : 'Estudiante';
+      setRoleUpdateToast(`¡Rol de "${userName}" actualizado a ${roleName}!`);
+      setTimeout(() => setRoleUpdateToast(null), 3000);
+    } catch (err: any) {
+      console.error('Error updating user role:', err);
+    } finally {
+      setUpdatingUserId(null);
     }
   };
 
@@ -379,6 +408,14 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
                 </div>
               </div>
 
+              {/* Success Toast when changing roles */}
+              {roleUpdateToast && (
+                <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn shadow-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{roleUpdateToast}</span>
+                </div>
+              )}
+
               {/* Users Table */}
               <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto">
@@ -387,9 +424,9 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
                       <tr>
                         <th className="py-3 px-4">Usuario</th>
                         <th className="py-3 px-4">Correo Electrónico</th>
-                        <th className="py-3 px-4">Rol</th>
+                        <th className="py-3 px-4">Rol / Permisos (Editar)</th>
                         <th className="py-3 px-4">Centro / Especialidad</th>
-                        <th className="py-3 px-4">Base de Datos</th>
+                        <th className="py-3 px-4">Estado</th>
                         <th className="py-3 px-4">Fecha Alta</th>
                       </tr>
                     </thead>
@@ -411,7 +448,8 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
                         </tr>
                       ) : (
                         filteredUsers.map((u) => {
-                          const isAdmin = authService.isAdminEmail(u.email) || u.role === 'admin';
+                          const isSuperAdmin = authService.isAdminEmail(u.email) && u.email.toLowerCase() === 'maruyalexander1@gmail.com';
+                          const isAdmin = isSuperAdmin || u.role === 'admin';
                           const isTeacher = u.role === 'teacher';
                           return (
                             <tr
@@ -443,20 +481,40 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
                                 {u.email}
                               </td>
                               <td className="py-3 px-4">
-                                {isAdmin ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold">
-                                    <ShieldCheck className="w-3.5 h-3.5" />
-                                    Admin
-                                  </span>
-                                ) : isTeacher ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-100 text-violet-800 border border-violet-200 text-xs font-bold">
-                                    <GraduationCap className="w-3.5 h-3.5" />
-                                    Docente
+                                {isSuperAdmin ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black shadow-2xs">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                                    <span>Superadmin</span>
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-medium">
-                                    Estudiante
-                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <select
+                                      value={u.role || 'user'}
+                                      disabled={updatingUserId === u.id}
+                                      onChange={(e) =>
+                                        handleRoleChange(
+                                          u.id,
+                                          e.target.value as 'user' | 'teacher' | 'admin',
+                                          u.name
+                                        )
+                                      }
+                                      className={`text-xs font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer ${
+                                        u.role === 'admin'
+                                          ? 'bg-amber-100 border-amber-300 text-amber-900 hover:bg-amber-200'
+                                          : u.role === 'teacher'
+                                          ? 'bg-violet-100 border-violet-300 text-violet-900 hover:bg-violet-200'
+                                          : 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200'
+                                      }`}
+                                      title="Cambiar rol de este usuario"
+                                    >
+                                      <option value="user">👤 Estudiante</option>
+                                      <option value="teacher">🎓 Profesor / Docente</option>
+                                      <option value="admin">⭐ Administrador</option>
+                                    </select>
+                                    {updatingUserId === u.id && (
+                                      <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                                    )}
+                                  </div>
                                 )}
                               </td>
                               <td className="py-3 px-4 text-xs text-slate-600">

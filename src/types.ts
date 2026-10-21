@@ -323,6 +323,7 @@ export interface ClassroomExam {
 
 export type ActivityType =
   | 'cooperative_group'    // Trabajo cooperativo con roles definidos
+  | 'individual_work'      // Trabajo individual / autónomo con ficha práctica y autoevaluación
   | 'classroom_quiz'       // Kahoot / Concurso de preguntas proyectable
   | 'structured_debate'    // Debate con posturas y turnos cronometrados
   | 'case_study'           // Estudio de caso / reto de la vida real
@@ -335,10 +336,14 @@ export interface TeacherActivityConfig {
   topic: string;
   level: EducationalLevel;
   durationMinutes: number;       // ej: 45-50 min (1 sesión)
-  groupSize: number;             // ej: 3 a 5 alumnos
+  groupSize: number;             // ej: 3 a 5 alumnos (o 1 para individual)
   schoolName?: string;
   customGoal?: string;           // Objetivo pedagógico que busca el profesor
   isPdcAdapted?: boolean;
+  // Parámetros específicos para Quiz / Concurso por Equipos
+  totalStudents?: number;        // Total alumnos en clase (ej: 25)
+  teamCount?: number;            // Cuántos equipos va a haber (ej: 5)
+  studentsPerTeam?: number;      // Cuántas personas por equipo (ej: 5)
 }
 
 export interface GroupRole {
@@ -365,6 +370,9 @@ export interface ClassroomActivity {
   targetCompetencies: string[];  // Competencias clave (CCL, STEM, CD, CPSAA, CC, CE, CCEC)
   estimatedMinutes: number;
   recommendedGroupSize: number;
+  totalStudents?: number;
+  teamCount?: number;
+  studentsPerTeam?: number;
   materialsNeeded: string[];
   setupInstructions: string;
   phases: ActivityPhase[];
