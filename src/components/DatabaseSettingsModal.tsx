@@ -58,6 +58,7 @@ export const DatabaseSettingsModal: React.FC<DatabaseSettingsModalProps> = ({
     ok: boolean;
     message: string;
     latencyMs?: number;
+    status?: number;
   } | null>(null);
 
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -457,6 +458,24 @@ export const DatabaseSettingsModal: React.FC<DatabaseSettingsModalProps> = ({
                   <div>
                     <p className="font-bold">{homelabTestResult.ok ? '¡MacBook Conectado!' : 'No se pudo contactar con tu MacBook:'}</p>
                     <p className="mt-0.5">{homelabTestResult.message}</p>
+                    {(homelabTestResult.status === 502 || homelabTestResult.message.includes('502')) && (
+                      <div className="mt-2.5 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-950 text-[11px] space-y-1">
+                        <p className="font-bold text-amber-900">¿Por qué ocurre el Error 502 Bad Gateway?</p>
+                        <p>
+                          1. <strong>Tu túnel sí funciona</strong>: Cloudflare llega correctamente hasta tu Mac.
+                        </p>
+                        <p>
+                          2. <strong>Falta el servidor en tu Mac</strong>: En el puerto que indicaste (ej: 8080), no hay ningún servidor web o API encendido en tu Linux.
+                        </p>
+                        <p>
+                          3. <strong>Prueba rápida</strong>: En tu Mac, abre otra terminal y escribe:
+                          <code className="block bg-amber-100 p-1 rounded font-mono text-[10px] my-1">
+                            python3 -m http.server 8080
+                          </code>
+                          Si recargas el enlace de Cloudflare, verás que el 502 desaparece.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

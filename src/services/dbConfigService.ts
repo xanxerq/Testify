@@ -163,9 +163,10 @@ export const dbConfigService = {
       if (res.ok) {
         const data = await res.json();
         if (data.ok) {
+          const cleanBaseUrl = targetUrl.replace(/\/$/, '');
           return {
             ok: true,
-            message: `¡Tu MacBook con Ubuntu Server está en línea y responde correctamente! (${data.latencyMs}ms)`,
+            message: `¡Tu MacBook con PocketBase está en línea y responde correctamente! (${data.latencyMs}ms)\nAcceso al panel admin de PocketBase: ${cleanBaseUrl}/_/`,
             latencyMs: data.latencyMs,
             status: data.status,
           };

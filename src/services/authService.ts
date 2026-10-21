@@ -16,6 +16,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { auth, db, googleProvider } from './firebase';
+import { dbConfigService } from './dbConfigService';
 import { User } from '../types';
 
 const ADMIN_EMAIL = 'maruyalexander1@gmail.com';
@@ -131,7 +132,103 @@ export const authService = {
     };
   },
 
-  // Register with Email and Password in Firebase Auth
+  // Register with PocketBase on Home Lab
+  async registerWithPocketBase(
+    homelabUrl: string,
+    name: string,
+    email: string,
+    password: string,
+    role: 'user' | 'teacher' = 'user',
+    institution?: string,
+    subjectArea?: string
+  ): Promise<{ user: User; sessionActive: boolean; message?: string }> {
+    const cleanUrl = homelabUrl.replace(/\/$/, '');
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
+
+    const createRes = await fetch(`${cleanUrl}/api/collections/users/records`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: cleanEmail,
+        password: password,
+        passwordConfirm: password,
+        name: cleanName,
+        role: role,
+        institution: institution || '',
+        subjectArea: subjectArea || '',
+      }),
+    });
+
+    const createData = await createRes.json();
+    if (!createRes.ok) {
+      const msg =
+        createData?.message ||
+        createData?.data?.email?.message ||
+        createData?.data?.password?.message ||
+        'Error al crear usuario en PocketBase';
+      throw new Error(`[PocketBase Mac] ${msg}`);
+    }
+
+    const authResult = await this.signInWithPocketBase(homelabUrl, cleanEmail, password);
+    return {
+      user: authResult.user,
+      sessionActive: true,
+      message: '¡Cuenta registrada e iniciada en el PocketBase de tu Mac!',
+    };
+  },
+
+  // Login with PocketBase on Home Lab
+  async signInWithPocketBase(
+    homelabUrl: string,
+    email: string,
+    password: string
+  ): Promise<{ user: User; sessionActive: boolean }> {
+    const cleanUrl = homelabUrl.replace(/\/$/, '');
+    const cleanEmail = email.trim().toLowerCase();
+
+    const authRes = await fetch(`${cleanUrl}/api/collections/users/auth-with-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identity: cleanEmail,
+        password: password,
+      }),
+    });
+
+    const authData = await authRes.json();
+    if (!authRes.ok) {
+      const msg = authData?.message || 'Correo o contraseña incorrectos en tu servidor PocketBase.';
+      throw new Error(`[PocketBase Mac] ${msg}`);
+    }
+
+    const record = authData.record;
+    const token = authData.token;
+    try {
+      localStorage.setItem('testify_pocketbase_token', token);
+    } catch {}
+
+    const isAdmin = this.isAdminEmail(cleanEmail);
+    const mappedUser: User = {
+      id: record.id,
+      name: record.name || cleanEmail.split('@')[0],
+      email: record.email || cleanEmail,
+      avatar: record.avatar
+        ? `${cleanUrl}/api/files/_pb_users_auth_/${record.id}/${record.avatar}`
+        : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(record.id)}`,
+      role: isAdmin ? 'admin' : (record.role || 'user'),
+      institution: record.institution || undefined,
+      subjectArea: record.subjectArea || undefined,
+      provider: 'email',
+      emailVerified: Boolean(record.verified),
+      createdAt: record.created || new Date().toISOString(),
+    };
+
+    this.setCurrentUser(mappedUser);
+    return { user: mappedUser, sessionActive: true };
+  },
+
+  // Register with Email and Password in Firebase Auth (with Home Lab PocketBase support)
   async registerWithEmail(
     name: string,
     email: string,
@@ -151,6 +248,27 @@ export const authService = {
     }
     if (!password || password.length < 6) {
       throw new Error('La contraseña debe tener al menos 6 caracteres.');
+    }
+
+    // 1. Check if Home Lab PocketBase target is active
+    const dbConfig = dbConfigService.getConfig();
+    if (dbConfig.activeTarget === 'homelab' && dbConfig.homelabUrl) {
+      try {
+        return await this.registerWithPocketBase(
+          dbConfig.homelabUrl,
+          cleanName,
+          cleanEmail,
+          password,
+          role,
+          institution,
+          subjectArea
+        );
+      } catch (homelabErr: any) {
+        if (!dbConfig.autoFallback) {
+          throw homelabErr;
+        }
+        console.warn('PocketBase en Mac no completó registro, usando respaldo Firebase Cloud:', homelabErr);
+      }
     }
 
     try {
@@ -221,7 +339,7 @@ export const authService = {
     }
   },
 
-  // Login with Email and Password in Firebase Auth
+  // Login with Email and Password in Firebase Auth (with Home Lab PocketBase support)
   async signInWithEmail(email: string, password: string): Promise<User> {
     const cleanEmail = email.trim().toLowerCase();
 
@@ -230,6 +348,20 @@ export const authService = {
     }
     if (!password) {
       throw new Error('Por favor, introduce tu contraseña.');
+    }
+
+    // 1. Check if Home Lab PocketBase target is active
+    const dbConfig = dbConfigService.getConfig();
+    if (dbConfig.activeTarget === 'homelab' && dbConfig.homelabUrl) {
+      try {
+        const homelabRes = await this.signInWithPocketBase(dbConfig.homelabUrl, cleanEmail, password);
+        return homelabRes.user;
+      } catch (homelabErr: any) {
+        if (!dbConfig.autoFallback) {
+          throw homelabErr;
+        }
+        console.warn('PocketBase en Mac no respondió, usando respaldo Firebase Cloud:', homelabErr);
+      }
     }
 
     try {

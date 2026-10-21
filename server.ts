@@ -704,6 +704,18 @@ app.post('/api/homelab/test-connection', async (req, res) => {
     clearTimeout(timer);
 
     const latencyMs = Date.now() - start;
+
+    if (response.status === 502) {
+      return res.json({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        latencyMs,
+        error:
+          'Error 502 Bad Gateway: El túnel de Cloudflare está activo, pero NO hay ningún servidor web o API respondiendo en el puerto local de tu Mac (o el servicio no está arrancado).',
+      });
+    }
+
     return res.json({
       ok: response.ok || response.status < 500,
       status: response.status,
