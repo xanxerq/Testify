@@ -3,6 +3,7 @@ import {
   AlertCircle,
   BookMarked,
   Bot,
+  Briefcase,
   Camera,
   Check,
   Clock,
@@ -47,6 +48,7 @@ interface ExamSetupFormProps {
   onNavigateToHomework?: () => void;
   onNavigateToFlashcards?: (subject?: string, topic?: string, level?: EducationalLevel) => void;
   onNavigateToChat?: () => void;
+  onNavigateToTeacher?: () => void;
 }
 
 const EDUCATIONAL_LEVELS: { level: EducationalLevel; label: string; desc: string }[] = [
@@ -70,6 +72,7 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
   onNavigateToHomework,
   onNavigateToFlashcards,
   onNavigateToChat,
+  onNavigateToTeacher,
 }) => {
   // Form state
   const [subject, setSubject] = useState(initialConfig?.subject || '');
@@ -385,6 +388,23 @@ export const ExamSetupForm: React.FC<ExamSetupFormProps> = ({
                 className="font-bold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 flex items-center gap-0.5 transition-colors ml-1"
               >
                 <span>Ir a Resolver Deberes →</span>
+              </button>
+            </div>
+          )}
+
+          {onNavigateToTeacher && (
+            <div className="inline-flex flex-wrap items-center justify-center gap-2 p-1.5 sm:p-2 pr-3 sm:pr-4 rounded-2xl bg-violet-50/90 border border-violet-200/80 text-xs sm:text-sm text-violet-950 shadow-xs">
+              <span className="px-2 py-0.5 rounded-full bg-violet-600 text-white font-extrabold text-[11px] uppercase tracking-wide flex items-center gap-1">
+                <Briefcase className="w-3 h-3" />
+                <span>Profesorado</span>
+              </span>
+              <span>¿Eres profesor/a? Prepara exámenes impresos con Modelo A/B, solucionarios y dinámicas de clase.</span>
+              <button
+                type="button"
+                onClick={onNavigateToTeacher}
+                className="font-bold text-violet-700 hover:text-violet-900 underline underline-offset-2 flex items-center gap-0.5 transition-colors ml-1 cursor-pointer"
+              >
+                <span>Ir a Zona Profesores →</span>
               </button>
             </div>
           )}

@@ -40,11 +40,11 @@ service cloud.firestore {
       return data.id is string && data.id.size() <= 128 &&
              data.email is string && data.email.size() <= 150 &&
              data.name is string && data.name.size() <= 100 &&
-             data.role in ['admin', 'user'] &&
+             data.role in ['admin', 'user', 'teacher'] &&
              data.provider in ['google', 'email'] &&
              data.emailVerified is bool &&
              // Prevent non-admin users from escalating themselves to admin unless authorized email
-             (data.role == 'user' || data.email == 'maruyalexander1@gmail.com' || isAdmin());
+             (data.role in ['user', 'teacher'] || data.email == 'maruyalexander1@gmail.com' || isAdmin());
     }
 
     function isValidExamResult(data) {
@@ -107,6 +107,13 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if true;
       allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || true;
+    }
+
+    // Collection: Teacher Classroom Materials (Exams and Dynamics created by teachers)
+    match /teacher_materials/{materialId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.teacherId == request.auth.uid) || true;
     }
   }
 }

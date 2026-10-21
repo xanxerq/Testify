@@ -1,11 +1,11 @@
-import { BookOpen, Bot, Database, ExternalLink, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, Sparkles, Terminal, User as UserIcon, Users } from 'lucide-react';
+import { BookOpen, Bot, Briefcase, Database, ExternalLink, GraduationCap, History, LogIn, LogOut, PlusCircle, ShieldCheck, Sparkles, Terminal, User as UserIcon, Users } from 'lucide-react';
 import { User } from '../types';
 import { PdcAdaptationButton } from './PdcAdaptationButton';
 
 interface NavbarProps {
   user: User | null;
-  activeView: 'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat';
-  onNavigate: (view: 'create' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat') => void;
+  activeView: 'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat' | 'teacher';
+  onNavigate: (view: 'create' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat' | 'teacher') => void;
   onOpenAuth: () => void;
   onOpenAdmin: () => void;
   onOpenRoomsModal: () => void;
@@ -137,6 +137,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden xs:inline">Historial</span>
           </button>
 
+          {/* Botón Zona de Profesorado */}
+          <button
+            id="nav-btn-teacher"
+            onClick={() => onNavigate('teacher')}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg transition-all ${
+              activeView === 'teacher'
+                ? 'bg-violet-600 text-white shadow-xs font-bold'
+                : 'bg-violet-50 text-violet-800 hover:bg-violet-100 border border-violet-200/70'
+            }`}
+            title="Zona de Profesorado: Exámenes escolares imprimibles (Modelo A/B), solucionarios y dinámicas de aula"
+          >
+            <Briefcase className="w-4 h-4 text-violet-600" />
+            <span className="hidden xs:inline font-bold">Profesores</span>
+            <span className="text-[10px] uppercase font-black tracking-wider px-1 py-0.2 rounded bg-violet-200/90 text-violet-950 hidden md:inline">
+              Aula
+            </span>
+          </button>
+
           <button
             id="nav-btn-multiplayer"
             onClick={onOpenRoomsModal}
@@ -202,6 +220,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {isAdmin ? (
                   <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1 py-0.5 rounded border border-amber-300 hidden sm:inline">
                     Admin
+                  </span>
+                ) : user.role === 'teacher' ? (
+                  <span className="text-[10px] font-bold text-violet-800 bg-violet-100 px-1.5 py-0.5 rounded border border-violet-300 hidden sm:inline">
+                    Docente
                   </span>
                 ) : user.provider === 'google' ? (
                   <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200/60 hidden sm:inline">

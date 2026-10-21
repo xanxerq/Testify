@@ -28,7 +28,7 @@
         "role": {
           "type": "string",
           "description": "Role of the user in the platform",
-          "enum": ["admin", "user"]
+          "enum": ["admin", "user", "teacher"]
         },
         "provider": {
           "type": "string",

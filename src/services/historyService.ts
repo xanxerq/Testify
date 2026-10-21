@@ -1,7 +1,17 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  query,
+  where,
+} from 'firebase/firestore';
+import { db } from './firebase';
 import { ExamResult } from '../types';
 
 const STORAGE_KEY_EXAM_HISTORY = 'testify_exam_history';
+const EXAM_RESULTS_COLLECTION = 'exam_results';
 
 export const historyService = {
   // Synchronous cached results from localStorage
@@ -16,86 +26,34 @@ export const historyService = {
     }
   },
 
-  // Helper to map a row from Supabase 'exams' table to an ExamResult
-  mapRowToResult(row: any): ExamResult {
-    if (row.data) {
-      const parsed = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
-      if (parsed && parsed.id && parsed.examTitle) {
-        return {
-          ...parsed,
-          id: row.id || parsed.id,
-          userId: row.user_id || parsed.userId,
-        };
-      }
-    }
-
-    // Fallback reconstruction if table stores columns directly
-    return {
-      id: row.id,
-      examId: row.exam_id || `exam_${row.id}`,
-      userId: row.user_id || 'guest',
-      userEmail: row.user_email || undefined,
-      userName: row.user_name || undefined,
-      examTitle: row.title || row.exam_title || 'Examen',
-      subject: row.subject || 'General',
-      topic: row.topic || 'Temario',
-      level: row.level || 'Bachillerato',
-      completedAt: row.completed_at || row.created_at || new Date().toISOString(),
-      totalScore: Number(row.score ?? row.total_score ?? 0),
-      maxPossibleScore: Number(row.max_score ?? row.max_possible_score ?? 10),
-      percentage: Number(row.percentage ?? 0),
-      testScore: Number(row.test_score ?? 0),
-      maxTestScore: Number(row.max_test_score ?? 0),
-      openScore: Number(row.open_score ?? 0),
-      maxOpenScore: Number(row.max_open_score ?? 0),
-      feedbackByQuestion: row.feedback_by_question || {},
-      generalFeedback: row.general_feedback || 'Examen completado.',
-      examData: row.exam_data || {
-        id: row.exam_id || row.id,
-        title: row.title || 'Examen',
-        subject: row.subject || 'General',
-        topic: row.topic || 'Temario',
-        level: row.level || 'Bachillerato',
-        difficulty: 'Media',
-        createdAt: row.created_at || new Date().toISOString(),
-        overview: '',
-        questions: [],
-        totalPoints: row.max_score || 10,
-      },
-      userAnswers: row.user_answers || {},
-    };
-  },
-
-  // Asynchronous fetch from Supabase 'exams' table for a specific user
+  // Asynchronous fetch from Firestore 'exam_results' collection
   async fetchResultsFromDb(userId?: string): Promise<ExamResult[]> {
-    if (!isSupabaseConfigured()) {
-      return this.getResults(userId);
-    }
+    const cached = this.getResults(userId);
 
     try {
-      let query = supabase.from('exams').select('*');
+      let q = collection(db, EXAM_RESULTS_COLLECTION);
+      let snap;
 
-      if (userId && userId !== 'guest' && userId !== 'all') {
-        query = query.eq('user_id', userId);
+      if (userId && userId !== 'guest' && userId !== 'all' && !userId.startsWith('guest_')) {
+        const userQuery = query(q, where('userId', '==', userId));
+        snap = await getDocs(userQuery);
+      } else {
+        snap = await getDocs(q);
       }
 
-      // Order newest first
-      query = query.order('created_at', { ascending: false });
+      if (snap && !snap.empty) {
+        const fetchedList: ExamResult[] = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as ExamResult;
+          fetchedList.push({
+            ...data,
+            id: data.id || docSnap.id,
+          });
+        });
 
-      const { data, error } = await query;
-
-      if (error) {
-        console.warn('Error querying Supabase table "exams":', error.message);
-        return this.getResults(userId);
-      }
-
-      if (data && Array.isArray(data)) {
-        const fetchedList: ExamResult[] = data.map((row) => this.mapRowToResult(row));
-
-        // Merge with local storage cache to ensure offline resilience
-        const currentCached = this.getResults();
+        // Merge with local storage cache to ensure resilience
         const map = new Map<string, ExamResult>();
-        currentCached.forEach((r) => map.set(r.id, r));
+        cached.forEach((r) => map.set(r.id, r));
         fetchedList.forEach((r) => map.set(r.id, r));
 
         const merged = Array.from(map.values()).sort(
@@ -105,15 +63,14 @@ export const historyService = {
         localStorage.setItem(STORAGE_KEY_EXAM_HISTORY, JSON.stringify(merged));
         return userId && userId !== 'all' ? merged.filter((r) => r.userId === userId) : merged;
       }
-
-      return this.getResults(userId);
     } catch (err) {
-      console.warn('Could not fetch from Supabase table "exams", using cached data:', err);
-      return this.getResults(userId);
+      console.warn('Could not fetch from Firestore collection "exam_results", using cached data:', err);
     }
+
+    return cached;
   },
 
-  // Save result locally and persist to Supabase 'exams' table
+  // Save result locally and persist to Firestore 'exam_results'
   async saveResult(result: ExamResult): Promise<void> {
     // 1. Always update local storage first for instantaneous UI update
     try {
@@ -124,47 +81,38 @@ export const historyService = {
       console.error('Error saving exam result locally:', err);
     }
 
-    // 2. Persist to Supabase table 'exams' if configured
-    if (!isSupabaseConfigured()) {
-      return;
-    }
-
+    // 2. Persist to Firestore if online
     try {
-      const fullRow = {
+      const resultDocRef = doc(db, EXAM_RESULTS_COLLECTION, result.id);
+      await setDoc(resultDocRef, {
         id: result.id,
-        user_id: result.userId,
-        title: result.examTitle,
+        examId: result.examId,
+        userId: result.userId,
+        userEmail: result.userEmail || '',
+        userName: result.userName || '',
+        examTitle: result.examTitle,
         subject: result.subject,
         topic: result.topic,
         level: result.level,
-        score: result.totalScore,
-        max_score: result.maxPossibleScore,
-        percentage: result.percentage,
-        data: result,
-        created_at: result.completedAt || new Date().toISOString(),
-      };
-
-      const { error } = await supabase.from('exams').upsert(fullRow);
-
-      if (error) {
-        console.warn('Full upsert to "exams" had an issue, trying minimal payload:', error.message);
-        // Fallback for custom schemas that only have { id, user_id, data }
-        const minimalRow = {
-          id: result.id,
-          user_id: result.userId,
-          data: result,
-        };
-        const { error: minError } = await supabase.from('exams').upsert(minimalRow);
-        if (minError) {
-          console.warn('Fallback upsert also returned error:', minError.message);
-        }
-      }
+        completedAt: result.completedAt || new Date().toISOString(),
+        totalScore: Number(result.totalScore ?? 0),
+        maxPossibleScore: Number(result.maxPossibleScore ?? 10),
+        percentage: Number(result.percentage ?? 0),
+        testScore: Number(result.testScore ?? 0),
+        maxTestScore: Number(result.maxTestScore ?? 0),
+        openScore: Number(result.openScore ?? 0),
+        maxOpenScore: Number(result.maxOpenScore ?? 0),
+        feedbackByQuestion: result.feedbackByQuestion || {},
+        generalFeedback: result.generalFeedback || 'Examen completado.',
+        examData: result.examData,
+        userAnswers: result.userAnswers || {},
+      });
     } catch (err) {
-      console.warn('Could not persist exam to Supabase table "exams":', err);
+      console.warn('Notice saving to Firestore "exam_results":', err);
     }
   },
 
-  // Delete result locally and from Supabase 'exams' table
+  // Delete result locally and from Firestore
   async deleteResult(id: string): Promise<void> {
     try {
       const all = this.getResults();
@@ -174,33 +122,28 @@ export const historyService = {
       console.error('Error deleting exam result locally:', err);
     }
 
-    if (isSupabaseConfigured()) {
-      try {
-        const { error } = await supabase.from('exams').delete().eq('id', id);
-        if (error) {
-          console.warn('Error deleting record from "exams" table:', error.message);
-        }
-      } catch (err) {
-        console.warn('Could not delete from Supabase:', err);
-      }
+    try {
+      await deleteDoc(doc(db, EXAM_RESULTS_COLLECTION, id));
+    } catch (err) {
+      console.warn('Notice deleting from Firestore:', err);
     }
   },
 
   // Get all exam results across all users (for Admin view)
   async getAllExamResultsFromDatabase(): Promise<ExamResult[]> {
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await supabase
-          .from('exams')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (!error && data && Array.isArray(data)) {
-          return data.map((row) => this.mapRowToResult(row));
-        }
-      } catch (err) {
-        console.warn('Error loading all exams from Supabase:', err);
+    try {
+      const snap = await getDocs(collection(db, EXAM_RESULTS_COLLECTION));
+      if (!snap.empty) {
+        const list: ExamResult[] = [];
+        snap.forEach((docSnap) => {
+          list.push(docSnap.data() as ExamResult);
+        });
+        return list.sort(
+          (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+        );
       }
+    } catch (err) {
+      console.warn('Error loading all exams from Firestore:', err);
     }
     return this.getResults();
   },

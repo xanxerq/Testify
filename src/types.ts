@@ -14,7 +14,9 @@ export interface User {
   name: string;
   email: string;
   avatar?: string;
-  role: 'admin' | 'user';
+  role: 'admin' | 'user' | 'teacher';
+  institution?: string;
+  subjectArea?: string;
   provider: 'google' | 'email';
   emailVerified: boolean;
   createdAt: string;
@@ -255,5 +257,125 @@ export interface FlashcardDeck {
   createdAt: string;
   isPdcAdapted?: boolean;
 }
+
+// -------------------------------------------------------------
+// SECCIÓN DE PROFESORADO (EXÁMENES DE AULA Y ACTIVIDADES EN CLASE)
+// -------------------------------------------------------------
+
+export interface SchoolHeaderConfig {
+  schoolName: string;      // ej: IES Complutense
+  department: string;      // ej: Departamento de Ciencias
+  courseAndGroup: string;  // ej: 3º ESO - Grupo B
+  teacherName: string;     // ej: Prof. Gómez
+  examDate: string;        // ej: 24 de Octubre de 2025
+  evaluationPeriod: string;// ej: 1ª Evaluación
+  instructions: string;    // Instrucciones oficiales para los alumnos
+}
+
+export interface TeacherExamConfig {
+  subject: string;
+  topic: string;
+  level: EducationalLevel;
+  difficulty: ExamDifficulty;
+  header: SchoolHeaderConfig;
+  testCount: number;
+  openCount: number;
+  generateModelB: boolean;       // Generar variante Modelo B para evitar copias
+  includeAnswerKey: boolean;     // Generar solucionario detallado
+  includeRubric: boolean;        // Incluir rúbrica por competencias LOMLOE
+  isPdcAdapted?: boolean;        // Adaptación curricular LOMLOE / DUA
+  timeMinutes: number;           // ej: 50 minutos
+  customRequirements?: string;   // Instrucciones didácticas específicas del profesor
+}
+
+export interface ClassroomExamQuestion {
+  number: number;
+  type: 'multiple_choice' | 'open';
+  questionText: string;
+  points: number;
+  options?: string[];            // 4 opciones para tipo test
+  correctOptionIndex?: number;   // 0 a 3 (solo en versión docente / solucionario)
+  modelBOptionOrder?: number[];  // Permutación para Modelo B
+  expectedAnswer?: string;       // Respuesta desarrollada oficial
+  gradingCriteria?: string[];    // Pautas de calificación objetiva
+  competencyTag?: string;        // ej: CCL1, STEM2, CD3
+  blankSpaceLines?: number;      // Espacio reservado para escribir en papel
+}
+
+export interface ClassroomExam {
+  id: string;
+  title: string;
+  header: SchoolHeaderConfig;
+  subject: string;
+  topic: string;
+  level: EducationalLevel;
+  difficulty: ExamDifficulty;
+  createdAt: string;
+  durationMinutes: number;
+  totalPoints: number;
+  questionsModelA: ClassroomExamQuestion[];
+  questionsModelB?: ClassroomExamQuestion[];
+  answerKeyMarkdown: string;     // Solucionario completo para el profesor
+  rubricMarkdown: string;        // Criterios de evaluación y rúbrica LOMLOE
+  pedagogicalNotes: string;      // Recomendaciones didácticas
+  isPdcAdapted?: boolean;
+}
+
+export type ActivityType =
+  | 'cooperative_group'    // Trabajo cooperativo con roles definidos
+  | 'classroom_quiz'       // Kahoot / Concurso de preguntas proyectable
+  | 'structured_debate'    // Debate con posturas y turnos cronometrados
+  | 'case_study'           // Estudio de caso / reto de la vida real
+  | 'quick_experiment'     // Taller o experimento de aula con materiales sencillos
+  | 'escape_room';         // Escape Room de aula con pistas y código final
+
+export interface TeacherActivityConfig {
+  type: ActivityType;
+  subject: string;
+  topic: string;
+  level: EducationalLevel;
+  durationMinutes: number;       // ej: 45-50 min (1 sesión)
+  groupSize: number;             // ej: 3 a 5 alumnos
+  schoolName?: string;
+  customGoal?: string;           // Objetivo pedagógico que busca el profesor
+  isPdcAdapted?: boolean;
+}
+
+export interface GroupRole {
+  roleName: string;              // Coordinador, Portavoz, Secretario, Temporizador...
+  responsibilities: string[];    // Qué debe hacer este rol en el grupo
+}
+
+export interface ActivityPhase {
+  phaseNumber: number;
+  title: string;
+  durationMinutes: number;
+  teacherAction: string;
+  studentAction: string;
+}
+
+export interface ClassroomActivity {
+  id: string;
+  type: ActivityType;
+  title: string;
+  subtitle: string;
+  subject: string;
+  topic: string;
+  level: EducationalLevel;
+  targetCompetencies: string[];  // Competencias clave (CCL, STEM, CD, CPSAA, CC, CE, CCEC)
+  estimatedMinutes: number;
+  recommendedGroupSize: number;
+  materialsNeeded: string[];
+  setupInstructions: string;
+  phases: ActivityPhase[];
+  groupRoles?: GroupRole[];
+  deliverableOrProduct: string;   // Qué deben entregar los alumnos
+  evaluationRubric: string;      // Rúbrica de heteroevaluación y coevaluación
+  printableStudentWorksheet: string; // Ficha imprimible para repartir en clase
+  teacherAnswerKeyOrGuide: string;   // Hoja guía para el docente
+  createdAt: string;
+  isPdcAdapted?: boolean;
+}
+
 
 

@@ -11,6 +11,7 @@ import { StudyNotesView } from './components/StudyNotesView';
 import { HomeworkSolverView } from './components/HomeworkSolverView';
 import { FlashcardsView } from './components/FlashcardsView';
 import { ChatbotView } from './components/ChatbotView';
+import { TeacherPortalView } from './components/TeacherPortalView';
 import { RoomLobbyModal } from './components/RoomLobbyModal';
 import { PdcInfoModal } from './components/PdcInfoModal';
 import { usePdc } from './context/PdcContext';
@@ -34,7 +35,7 @@ import {
 export default function App() {
   const { pdcToastMessage, dismissPdcToast } = usePdc();
   const [user, setUser] = useState<User | null>(() => authService.getCurrentUser());
-  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat'>('create');
+  const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat' | 'teacher'>('create');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
@@ -410,6 +411,10 @@ export default function App() {
             onNavigateToHomework={() => setActiveView('homework')}
             onNavigateToFlashcards={handleNavigateToFlashcards}
             onNavigateToChat={() => setActiveView('chat')}
+            onNavigateToTeacher={() => {
+              setActiveView('teacher');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         )}
 
@@ -499,6 +504,17 @@ export default function App() {
             roomCode={activeRoomCode}
             currentParticipantId={activeParticipantId}
             onStudyFlashcards={handleStudyFlashcardsFromExam}
+          />
+        )}
+
+        {activeView === 'teacher' && (
+          <TeacherPortalView
+            user={user}
+            onOpenAuth={() => setIsAuthModalOpen(true)}
+            onLaunchLiveExam={(exam) => {
+              setCurrentExam(exam);
+              setIsRoomLobbyOpen(true);
+            }}
           />
         )}
 
