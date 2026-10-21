@@ -8,6 +8,7 @@ interface NavbarProps {
   onNavigate: (view: 'create' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat' | 'teacher') => void;
   onOpenAuth: () => void;
   onOpenAdmin: () => void;
+  onOpenDbSettings: () => void;
   onOpenRoomsModal: () => void;
   onSignOut: () => void;
 }
@@ -18,6 +19,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigate,
   onOpenAuth,
   onOpenAdmin,
+  onOpenDbSettings,
   onOpenRoomsModal,
   onSignOut,
 }) => {
@@ -183,7 +185,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </a>
 
           {/* Admin Database Viewer Button (shown for maruyalexander1@gmail.com / role === admin) */}
-          {isAdmin && (
+          {isAdmin ? (
             <button
               id="nav-btn-admin-db"
               onClick={onOpenAdmin}
@@ -195,6 +197,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-[10px] bg-amber-600 text-white px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
                 Admin
               </span>
+            </button>
+          ) : (
+            <button
+              id="nav-btn-db-settings"
+              onClick={onOpenDbSettings}
+              className="inline-flex items-center gap-1 px-2.5 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-indigo-700 hover:bg-slate-100 transition-colors"
+              title="Ajustes de Base de Datos, Servidor y Home Lab"
+            >
+              <Database className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden xl:inline">BD / Servidor</span>
             </button>
           )}
 

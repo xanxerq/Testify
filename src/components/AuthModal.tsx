@@ -3,6 +3,7 @@ import {
   AlertCircle,
   Briefcase,
   CheckCircle2,
+  Database,
   GraduationCap,
   Lock,
   Mail,
@@ -18,9 +19,15 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (user: User) => void;
+  onOpenDbSettings?: () => void;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  onOpenDbSettings,
+}) => {
   const [tab, setTab] = useState<'login' | 'register'>('login');
   const [selectedRole, setSelectedRole] = useState<'user' | 'teacher'>('user');
 
@@ -417,6 +424,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               </button>
             </div>
           </div>
+
+          {/* Enlace para configurar Base de Datos / Home Lab Ubuntu */}
+          {onOpenDbSettings && (
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500">¿Quieres conectar Supabase o tu MacBook?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenDbSettings();
+                }}
+                className="font-bold text-indigo-700 hover:text-indigo-900 underline flex items-center gap-1 cursor-pointer"
+              >
+                <Database className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Ajustes BD / Home Lab →</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

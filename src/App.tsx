@@ -12,6 +12,7 @@ import { HomeworkSolverView } from './components/HomeworkSolverView';
 import { FlashcardsView } from './components/FlashcardsView';
 import { ChatbotView } from './components/ChatbotView';
 import { TeacherPortalView } from './components/TeacherPortalView';
+import { DatabaseSettingsModal } from './components/DatabaseSettingsModal';
 import { RoomLobbyModal } from './components/RoomLobbyModal';
 import { PdcInfoModal } from './components/PdcInfoModal';
 import { usePdc } from './context/PdcContext';
@@ -38,6 +39,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<'create' | 'exam' | 'results' | 'history' | 'notes' | 'homework' | 'flashcards' | 'chat' | 'teacher'>('create');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isDbSettingsOpen, setIsDbSettingsOpen] = useState(false);
 
   // Chatbot state
   const [chatInitialSubject, setChatInitialSubject] = useState<string>('');
@@ -387,6 +389,7 @@ export default function App() {
         }}
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onOpenAdmin={() => setIsAdminModalOpen(true)}
+        onOpenDbSettings={() => setIsDbSettingsOpen(true)}
         onOpenRoomsModal={() => {
           setInitialRoomCode(null);
           setIsRoomLobbyOpen(true);
@@ -559,6 +562,7 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         onSuccess={(loggedUser) => setUser(loggedUser)}
+        onOpenDbSettings={() => setIsDbSettingsOpen(true)}
       />
 
       {/* Admin Database & Users Viewer Modal */}
@@ -566,6 +570,13 @@ export default function App() {
         isOpen={isAdminModalOpen}
         onClose={() => setIsAdminModalOpen(false)}
         currentUser={user}
+        onOpenDbSettings={() => setIsDbSettingsOpen(true)}
+      />
+
+      {/* Database & Home Lab Settings Modal */}
+      <DatabaseSettingsModal
+        isOpen={isDbSettingsOpen}
+        onClose={() => setIsDbSettingsOpen(false)}
       />
 
       {/* PDC Curricular Adaptation Info & Settings Modal */}

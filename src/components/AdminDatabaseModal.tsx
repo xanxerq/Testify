@@ -25,12 +25,14 @@ interface AdminDatabaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: User | null;
+  onOpenDbSettings?: () => void;
 }
 
 export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
   isOpen,
   onClose,
   currentUser,
+  onOpenDbSettings,
 }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'exams' | 'rules'>('users');
   const [users, setUsers] = useState<User[]>([]);
@@ -155,6 +157,20 @@ export const AdminDatabaseModal: React.FC<AdminDatabaseModalProps> = ({
               <Download className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Exportar JSON</span>
             </button>
+            {onOpenDbSettings && (
+              <button
+                id="admin-btn-db-settings"
+                onClick={() => {
+                  onClose();
+                  onOpenDbSettings();
+                }}
+                title="Configurar servidor, Supabase o Home Lab"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Ajustes / Home Lab</span>
+              </button>
+            )}
             <button
               id="admin-btn-close"
               onClick={onClose}

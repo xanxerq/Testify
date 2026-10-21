@@ -679,6 +679,48 @@ DIRECTRICES PEDAGÓGICAS:
   }
 });
 
+// Endpoint: Test connection to Home Lab (Ubuntu Server on MacBook)
+app.post('/api/homelab/test-connection', async (req, res) => {
+  try {
+    const { serverUrl } = req.body;
+    if (!serverUrl || typeof serverUrl !== 'string') {
+      return res.status(400).json({ ok: false, error: 'URL del servidor no proporcionada' });
+    }
+
+    let urlToPing = serverUrl.trim();
+    if (!urlToPing.startsWith('http://') && !urlToPing.startsWith('https://')) {
+      urlToPing = `https://${urlToPing}`;
+    }
+
+    const start = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(urlToPing, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: { Accept: 'application/json, text/plain, */*' },
+    });
+    clearTimeout(timer);
+
+    const latencyMs = Date.now() - start;
+    return res.json({
+      ok: response.ok || response.status < 500,
+      status: response.status,
+      statusText: response.statusText,
+      latencyMs,
+    });
+  } catch (err: any) {
+    return res.json({
+      ok: false,
+      error:
+        err.name === 'AbortError'
+          ? 'Tiempo de espera agotado (timeout de 6s). Verifica si el túnel está encendido y el MacBook activo.'
+          : err.message,
+    });
+  }
+});
+
 // Start server and attach Vite middleware in development
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
